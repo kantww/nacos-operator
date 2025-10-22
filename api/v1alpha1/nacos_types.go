@@ -65,9 +65,11 @@ type Certification struct {
 }
 
 type K8sWrapper struct {
+	// +kubebuilder:pruning:PreserveUnknownFields
 	PodSpec PodSpecWrapper `json:"PodSpec,omitempty"`
 }
 
+// +kubebuilder:pruning:PreserveUnknownFields
 type PodSpecWrapper struct {
 	Spec v1.PodSpec `json:"-"`
 }

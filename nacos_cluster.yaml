@@ -1,0 +1,41 @@
+apiVersion: nacos.io/v1alpha1
+kind: Nacos
+metadata:
+  name: nacos-rc-9bd5760a25d440e0
+  namespace: rc-9bd5760a25d440e0
+spec:
+  type: cluster
+  image: docker.appnest.com:30010/nacos/nacos-server:v2.4.3
+  replicas: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 2
+      memory: 2Gi
+  k8sWrapper:
+    PodSpec:
+      spec:
+        volumes:
+        - name: nacos-config
+          configMap:
+            defaultMode: 420
+            items:
+            - key: application.properties
+              path: application.properties
+            name: nacos-config
+        - name: pg-pl
+          hostPath:
+            # 注意：使用 hostPath 意味着每个节点上都必须存在这个文件
+            path: /root/nacos-postgresql-datasource-plugin-ext-1.0.0-2.4.2.jar
+            type: File
+        containers:
+        # 容器名称与 metadata.name 保持一致
+        - name: nacos-rc-9bd5760a25d440e0
+          volumeMounts:
+          - mountPath: /home/nacos/conf/application.properties
+            name: nacos-config
+            subPath: application.properties
+          - mountPath: /home/nacos/plugins/nacos-postgresql-datasource-plugin-ext-1.0.0.jar
+            name: pg-pl

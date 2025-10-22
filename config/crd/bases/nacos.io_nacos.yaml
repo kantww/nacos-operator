@@ -1033,6 +1033,7 @@ spec:
                 description: 通用k8s配置包装器
                 properties:
                   PodSpec:
+                    x-kubernetes-preserve-unknown-fields: true
                     type: object
                 type: object
               livenessProbe:

@@ -22,9 +22,10 @@ func EnsureNormal(err error) {
 }
 
 func EnsureNormalMyError(err error, code int) {
-	if err != nil {
-		panic(New(code, err.Error()))
-	}
+    if err != nil {
+        // Use a constant format string to satisfy vet printf checks.
+        panic(New(code, "%v", err))
+    }
 }
 
 func EnsureEqual(i1 interface{}, i2 interface{}, code int, msg ...interface{}) {

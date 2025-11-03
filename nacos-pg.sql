@@ -194,7 +194,7 @@ COMMENT ON COLUMN "group_capacity"."group_id" IS 'Group ID，空字符表示整�
 COMMENT ON COLUMN "group_capacity"."quota" IS '配额，0表示使用默认值';
 COMMENT ON COLUMN "group_capacity"."usage" IS '使用量';
 COMMENT ON COLUMN "group_capacity"."max_size" IS '单个配置大小上限，单位为字节，0表示使用默认值';
-COMMENT ON COLUMN "group_capacity"."max_aggr_count" IS '聚合子配置最大个数，，0表示使用默认值';
+COMMENT ON COLUMN "group_capacity"."max_aggr_count" IS '聚合子配置最大个数，0表示使用默认值';
 COMMENT ON COLUMN "group_capacity"."max_aggr_size" IS '单个聚合数据的子配置大小上限，单位为字节，0表示使用默认值';
 COMMENT ON COLUMN "group_capacity"."max_history_count" IS '最大变更历史数量';
 COMMENT ON COLUMN "group_capacity"."gmt_create" IS '创建时间';

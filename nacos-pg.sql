@@ -256,7 +256,12 @@ CREATE TABLE IF NOT EXISTS "roles" (
 -- Records of roles
 -- ----------------------------
 
-INSERT INTO "roles"("username","role") VALUES ('nacos','ROLE_ADMIN') ON CONFLICT ("username","role") DO NOTHING;
+-- Seed role: idempotent without requiring a unique constraint
+INSERT INTO "roles"("username","role")
+SELECT 'nacos','ROLE_ADMIN'
+WHERE NOT EXISTS (
+  SELECT 1 FROM "roles" WHERE "username"='nacos' AND "role"='ROLE_ADMIN'
+);
 
 -- ----------------------------
 -- Table structure for tenant_capacity
@@ -330,7 +335,27 @@ CREATE TABLE IF NOT EXISTS "users" (
 -- Records of users
 -- ----------------------------
 
-INSERT INTO "users"("username","password","enabled") VALUES ('nacos', '$2a$10$EuWPZHzz32dJN7jexM34MOeYirDdFAZm2kuWj7VEOJhhZkDrxfvUu', TRUE) ON CONFLICT ("username") DO NOTHING;
+-- Seed admin user: idempotent without requiring a unique constraint
+INSERT INTO "users"("username","password","enabled")
+SELECT 'nacos', '$2a$10$EuWPZHzz32dJN7jexM34MOeYirDdFAZm2kuWj7VEOJhhZkDrxfvUu', TRUE
+WHERE NOT EXISTS (
+  SELECT 1 FROM "users" WHERE "username"='nacos'
+);
+
+-- ----------------------------
+-- Primary Key structure for table users (required for ON CONFLICT ("username"))
+-- ----------------------------
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'users_pkey'
+          AND table_name = 'users'
+          AND constraint_type = 'PRIMARY KEY'
+    ) THEN
+        ALTER TABLE "users" ADD CONSTRAINT "users_pkey" PRIMARY KEY ("username");
+    END IF;
+END $$ LANGUAGE plpgsql;
 
 -- ----------------------------
 -- Indexes structure for table config_info
@@ -340,7 +365,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uk_configinfo_datagrouptenant" ON "config_inf
 -- ----------------------------
 -- Primary Key structure for table config_info
 -- ----------------------------
-DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'config_info_pkey' AND table_name = 'config_info' AND constraint_type = 'PRIMARY KEY') THEN ALTER TABLE "config_info" ADD CONSTRAINT "config_info_pkey" PRIMARY KEY ("id"); END IF; END $;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'config_info_pkey'
+          AND table_name = 'config_info'
+          AND constraint_type = 'PRIMARY KEY'
+    ) THEN
+        ALTER TABLE "config_info" ADD CONSTRAINT "config_info_pkey" PRIMARY KEY ("id");
+    END IF;
+END $$ LANGUAGE plpgsql;
 
 -- ----------------------------
 -- Indexes structure for table config_info_aggr
@@ -350,7 +385,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uk_configinfoaggr_datagrouptenantdatum" ON "c
 -- ----------------------------
 -- Primary Key structure for table config_info_aggr
 -- ----------------------------
-DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'config_info_aggr_pkey' AND table_name = 'config_info_aggr' AND constraint_type = 'PRIMARY KEY') THEN ALTER TABLE "config_info_aggr" ADD CONSTRAINT "config_info_aggr_pkey" PRIMARY KEY ("id"); END IF; END $;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'config_info_aggr_pkey'
+          AND table_name = 'config_info_aggr'
+          AND constraint_type = 'PRIMARY KEY'
+    ) THEN
+        ALTER TABLE "config_info_aggr" ADD CONSTRAINT "config_info_aggr_pkey" PRIMARY KEY ("id");
+    END IF;
+END $$ LANGUAGE plpgsql;
 
 -- ----------------------------
 -- Indexes structure for table config_info_beta
@@ -360,7 +405,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uk_configinfobeta_datagrouptenant" ON "config
 -- ----------------------------
 -- Primary Key structure for table config_info_beta
 -- ----------------------------
-DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'config_info_beta_pkey' AND table_name = 'config_info_beta' AND constraint_type = 'PRIMARY KEY') THEN ALTER TABLE "config_info_beta" ADD CONSTRAINT "config_info_beta_pkey" PRIMARY KEY ("id"); END IF; END $;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'config_info_beta_pkey'
+          AND table_name = 'config_info_beta'
+          AND constraint_type = 'PRIMARY KEY'
+    ) THEN
+        ALTER TABLE "config_info_beta" ADD CONSTRAINT "config_info_beta_pkey" PRIMARY KEY ("id");
+    END IF;
+END $$ LANGUAGE plpgsql;
 
 -- ----------------------------
 -- Indexes structure for table config_info_tag
@@ -370,7 +425,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uk_configinfotag_datagrouptenanttag" ON "conf
 -- ----------------------------
 -- Primary Key structure for table config_info_tag
 -- ----------------------------
-DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'config_info_tag_pkey' AND table_name = 'config_info_tag' AND constraint_type = 'PRIMARY KEY') THEN ALTER TABLE "config_info_tag" ADD CONSTRAINT "config_info_tag_pkey" PRIMARY KEY ("id"); END IF; END $;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'config_info_tag_pkey'
+          AND table_name = 'config_info_tag'
+          AND constraint_type = 'PRIMARY KEY'
+    ) THEN
+        ALTER TABLE "config_info_tag" ADD CONSTRAINT "config_info_tag_pkey" PRIMARY KEY ("id");
+    END IF;
+END $$ LANGUAGE plpgsql;
 
 -- ----------------------------
 -- Indexes structure for table config_tags_relation
@@ -387,7 +452,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uk_configtagrelation_configidtag" ON "config_
 -- ----------------------------
 -- Primary Key structure for table config_tags_relation
 -- ----------------------------
-DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'config_tags_relation_pkey' AND table_name = 'config_tags_relation' AND constraint_type = 'PRIMARY KEY') THEN ALTER TABLE "config_tags_relation" ADD CONSTRAINT "config_tags_relation_pkey" PRIMARY KEY ("nid"); END IF; END $;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'config_tags_relation_pkey'
+          AND table_name = 'config_tags_relation'
+          AND constraint_type = 'PRIMARY KEY'
+    ) THEN
+        ALTER TABLE "config_tags_relation" ADD CONSTRAINT "config_tags_relation_pkey" PRIMARY KEY ("nid");
+    END IF;
+END $$ LANGUAGE plpgsql;
 
 -- ----------------------------
 -- Indexes structure for table group_capacity
@@ -399,7 +474,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uk_group_id" ON "group_capacity" USING btree 
 -- ----------------------------
 -- Primary Key structure for table group_capacity
 -- ----------------------------
-DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'group_capacity_pkey' AND table_name = 'group_capacity' AND constraint_type = 'PRIMARY KEY') THEN ALTER TABLE "group_capacity" ADD CONSTRAINT "group_capacity_pkey" PRIMARY KEY ("id"); END IF; END $;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'group_capacity_pkey'
+          AND table_name = 'group_capacity'
+          AND constraint_type = 'PRIMARY KEY'
+    ) THEN
+        ALTER TABLE "group_capacity" ADD CONSTRAINT "group_capacity_pkey" PRIMARY KEY ("id");
+    END IF;
+END $$ LANGUAGE plpgsql;
 
 -- ----------------------------
 -- Indexes structure for table his_config_info
@@ -417,7 +502,17 @@ CREATE INDEX IF NOT EXISTS "idx_gmt_modified" ON "his_config_info" USING btree (
 -- ----------------------------
 -- Primary Key structure for table his_config_info
 -- ----------------------------
-DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'his_config_info_pkey' AND table_name = 'his_config_info' AND constraint_type = 'PRIMARY KEY') THEN ALTER TABLE "his_config_info" ADD CONSTRAINT "his_config_info_pkey" PRIMARY KEY ("nid"); END IF; END $;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'his_config_info_pkey'
+          AND table_name = 'his_config_info'
+          AND constraint_type = 'PRIMARY KEY'
+    ) THEN
+        ALTER TABLE "his_config_info" ADD CONSTRAINT "his_config_info_pkey" PRIMARY KEY ("nid");
+    END IF;
+END $$ LANGUAGE plpgsql;
 
 -- ----------------------------
 -- Indexes structure for table permissions
@@ -446,7 +541,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uk_tenant_id" ON "tenant_capacity" USING btre
 -- ----------------------------
 -- Primary Key structure for table tenant_capacity
 -- ----------------------------
-DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'tenant_capacity_pkey' AND table_name = 'tenant_capacity' AND constraint_type = 'PRIMARY KEY') THEN ALTER TABLE "tenant_capacity" ADD CONSTRAINT "tenant_capacity_pkey" PRIMARY KEY ("id"); END IF; END $;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'tenant_capacity_pkey'
+          AND table_name = 'tenant_capacity'
+          AND constraint_type = 'PRIMARY KEY'
+    ) THEN
+        ALTER TABLE "tenant_capacity" ADD CONSTRAINT "tenant_capacity_pkey" PRIMARY KEY ("id");
+    END IF;
+END $$ LANGUAGE plpgsql;
 
 -- ----------------------------
 -- Indexes structure for table tenant_info

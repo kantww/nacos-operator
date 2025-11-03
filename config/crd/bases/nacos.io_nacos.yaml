@@ -909,6 +909,39 @@ spec:
                   type:
                     type: string
                 type: object
+              postgres:
+                properties:
+                  host:
+                    type: string
+                  port:
+                    type: string
+                  database:
+                    type: string
+                  credentialsSecretRef:
+                    properties:
+                      name:
+                        type: string
+                      usernameKey:
+                        type: string
+                      passwordKey:
+                        type: string
+                    type: object
+                type: object
+              pgInit:
+                properties:
+                  enabled:
+                    type: boolean
+                  configMapRef:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  sqlKey:
+                    type: string
+                  timeoutSeconds:
+                    format: int32
+                    type: integer
+                type: object
               env:
                 items:
                   description: EnvVar represents an environment variable present in

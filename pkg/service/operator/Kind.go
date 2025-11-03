@@ -112,15 +112,43 @@ func (e *KindClient) generateClientSvcName(nacos *nacosgroupv1alpha1.Nacos) stri
 // CR格式验证
 func (e *KindClient) ValidationField(nacos *nacosgroupv1alpha1.Nacos) {
 
-	setDefaultValue := []func(nacos *nacosgroupv1alpha1.Nacos){
-		setDefaultNacosType,
-		setDefaultMysql,
-		setDefaultCertification,
-	}
+    setDefaultValue := []func(nacos *nacosgroupv1alpha1.Nacos){
+        setDefaultNacosType,
+        setDefaultMysql,
+        setDefaultCertification,
+        setDefaultPostgres,
+    }
 
 	for _, f := range setDefaultValue {
 		f(nacos)
 	}
+}
+
+func setDefaultPostgres(nacos *nacosgroupv1alpha1.Nacos) {
+    // 默认端口
+    if nacos.Spec.Postgres.Port == "" {
+        nacos.Spec.Postgres.Port = "5432"
+    }
+    // 默认凭据 key
+    if nacos.Spec.Postgres.CredentialsSecretRef.UsernameKey == "" {
+        nacos.Spec.Postgres.CredentialsSecretRef.UsernameKey = "username"
+    }
+    if nacos.Spec.Postgres.CredentialsSecretRef.PasswordKey == "" {
+        nacos.Spec.Postgres.CredentialsSecretRef.PasswordKey = "password"
+    }
+    // 默认初始化开关与参数（仅当配置了 Postgres 时）
+    if nacos.Spec.Postgres.Host != "" {
+        if nacos.Spec.PGInit.SQLKey == "" {
+            nacos.Spec.PGInit.SQLKey = "nacos-pg.sql"
+        }
+        if nacos.Spec.PGInit.TimeoutSeconds == 0 {
+            nacos.Spec.PGInit.TimeoutSeconds = 20
+        }
+        // 若未显式关闭，默认启用
+        if !nacos.Spec.PGInit.Enabled {
+            nacos.Spec.PGInit.Enabled = true
+        }
+    }
 }
 
 func setDefaultNacosType(nacos *nacosgroupv1alpha1.Nacos) {

@@ -18,10 +18,11 @@ type IOperatorClient interface {
 }
 
 type OperatorClient struct {
-	KindClient   *KindClient
-	CheckClient  *CheckClient
-	HealClient   *HealClient
-	StatusClient *StatusClient
+    KindClient   *KindClient
+    CheckClient  *CheckClient
+    HealClient   *HealClient
+    StatusClient *StatusClient
+    PGClient     *PGClient
 }
 
 func NewOperatorClient(logger log.Logger, clientset *kubernetes.Clientset, s *runtime.Scheme, client client.Client) *OperatorClient {
@@ -34,8 +35,9 @@ func NewOperatorClient(logger log.Logger, clientset *kubernetes.Clientset, s *ru
 		// 状态客户端
 		StatusClient: NewStatusClient(logger, service, client),
 		// 维护客户端
-		HealClient: NewHealClient(logger, service),
-	}
+        HealClient: NewHealClient(logger, service),
+        PGClient:   NewPGClient(logger, client),
+    }
 }
 
 func (c *OperatorClient) MakeEnsure(nacos *nacosgroupv1alpha1.Nacos) {
@@ -78,6 +80,19 @@ func (c *OperatorClient) PreCheck(nacos *nacosgroupv1alpha1.Nacos) {
 	default:
 		// TODO
 	}
+}
+
+// PGEnsure: 在确保 K8s 资源前进行 PG 连通性校验与初始化
+func (c *OperatorClient) PGEnsure(nacos *nacosgroupv1alpha1.Nacos) {
+    // 未配置 Postgres 则跳过
+    if nacos.Spec.Postgres.Host == "" {
+        return
+    }
+    // 若显式关闭初始化，直接跳过
+    if !nacos.Spec.PGInit.Enabled {
+        return
+    }
+    c.PGClient.PingAndInit(nacos)
 }
 
 func (c *OperatorClient) CheckAndMakeHeal(nacos *nacosgroupv1alpha1.Nacos) {

@@ -55,6 +55,9 @@ type NacosSpec struct {
 	Certification Certification `json:"certification,omitempty"`
 	// 通用k8s配置包装器
 	K8sWrapper K8sWrapper `json:"k8sWrapper,omitempty"`
+	// Operator 专用：Postgres 直连配置与初始化控制（不影响 Nacos 运行时配置）
+	Postgres PostgresSpec `json:"postgres,omitempty"`
+	PGInit   PGInitSpec   `json:"pgInit,omitempty"`
 }
 
 type Certification struct {
@@ -97,6 +100,29 @@ type Database struct {
 	MysqlDb       string `json:"mysqlDb,omitempty"`
 	MysqlUser     string `json:"mysqlUser,omitempty"`
 	MysqlPassword string `json:"mysqlPassword,omitempty"`
+}
+
+// Operator 直连 PG 的凭据引用
+type PGCredentialsSecretRef struct {
+    Name        string `json:"name,omitempty"`
+    UsernameKey string `json:"usernameKey,omitempty"`
+    PasswordKey string `json:"passwordKey,omitempty"`
+}
+
+// Operator 直连 PG 的配置（不影响 Nacos 自身的连接方式）
+type PostgresSpec struct {
+    Host                 string                 `json:"host,omitempty"`
+    Port                 string                 `json:"port,omitempty"`
+    Database             string                 `json:"database,omitempty"`
+    CredentialsSecretRef PGCredentialsSecretRef `json:"credentialsSecretRef,omitempty"`
+}
+
+// 初始化控制（Operator 侧）
+type PGInitSpec struct {
+    Enabled        bool                     `json:"enabled,omitempty"`
+    ConfigMapRef   *v1.LocalObjectReference `json:"configMapRef,omitempty"`
+    SQLKey         string                   `json:"sqlKey,omitempty"`
+    TimeoutSeconds int32                    `json:"timeoutSeconds,omitempty"`
 }
 
 // NacosStatus defines the observed state of Nacos

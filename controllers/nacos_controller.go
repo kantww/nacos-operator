@@ -46,6 +46,7 @@ type NacosReconciler struct {
 
 // +kubebuilder:rbac:groups=nacos.io,resources=nacos,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=nacos.io,resources=nacos/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=secrets;configmaps,verbs=get;list;watch
 type reconcileFun func(nacos *nacosgroupv1alpha1.Nacos)
 
 func (r *NacosReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -89,6 +90,8 @@ func (r *NacosReconciler) ReconcileWork(instance *nacosgroupv1alpha1.Nacos) bool
 
 	for _, fun := range []reconcileFun{
 		r.OperaterClient.PreCheck,
+		// PG 连接检查与初始化（前置于资源确保）
+		r.OperaterClient.PGEnsure,
 		// 保证资源能够创建
 		r.OperaterClient.MakeEnsure,
 		// 检查并保障

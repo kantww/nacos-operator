@@ -123,6 +123,10 @@ type PGInitSpec struct {
     ConfigMapRef   *v1.LocalObjectReference `json:"configMapRef,omitempty"`
     SQLKey         string                   `json:"sqlKey,omitempty"`
     TimeoutSeconds int32                    `json:"timeoutSeconds,omitempty"`
+    // Desired schema version; used with policy to decide re-init or migrations
+    SchemaVersion  int32                    `json:"schemaVersion,omitempty"`
+    // Init policy: IfNotPresent|Always|Never|BumpVersion (default IfNotPresent)
+    Policy         string                   `json:"policy,omitempty"`
 }
 
 // NacosStatus defines the observed state of Nacos
@@ -136,7 +140,10 @@ type NacosStatus struct {
 	// 运行状态，主要根据这个字段用来判断是否正常
 	Phase Phase `json:"phase,omitempty"`
 
-	Version string `json:"version,omitempty"`
+    Version string `json:"version,omitempty"`
+
+    // PG reflects Postgres initialization status (operator-managed)
+    PG PGStatus `json:"pg,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -167,7 +174,7 @@ type NacosList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&Nacos{}, &NacosList{})
+    SchemeBuilder.Register(&Nacos{}, &NacosList{})
 }
 
 // 状况
@@ -221,9 +228,23 @@ type Event struct {
 type Phase string
 
 const (
-	PhaseRunning  Phase = "Running"
-	PhaseNone     Phase = ""
-	PhaseCreating Phase = "Creating"
-	PhaseFailed   Phase = "Failed"
-	PhaseScale    Phase = "Scaling"
+    PhaseRunning  Phase = "Running"
+    PhaseNone     Phase = ""
+    PhaseCreating Phase = "Creating"
+    PhaseFailed   Phase = "Failed"
+    PhaseScale    Phase = "Scaling"
 )
+
+// PGStatus describes the observed state of Postgres initialization.
+type PGStatus struct {
+    Initialized                  bool   `json:"initialized,omitempty"`
+    InitVersion                  int32  `json:"initVersion,omitempty"`
+    LastInitTime                 metav1.Time `json:"lastInitTime,omitempty"`
+    LastInitConfigMap            string `json:"lastInitConfigMap,omitempty"`
+    LastInitSQLKey               string `json:"lastInitSQLKey,omitempty"`
+    LastInitCMResourceVersion    string `json:"lastInitCMResourceVersion,omitempty"`
+    LastInitSecretResourceVersion string `json:"lastInitSecretResourceVersion,omitempty"`
+    LastInitSQLChecksum          string `json:"lastInitSQLChecksum,omitempty"`
+    LastResult                   string `json:"lastResult,omitempty"`
+    LastMessage                  string `json:"lastMessage,omitempty"`
+}

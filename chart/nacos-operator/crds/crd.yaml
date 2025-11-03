@@ -695,6 +695,11 @@ spec:
                     timeoutSeconds:
                       format: int32
                       type: integer
+                    schemaVersion:
+                      format: int32
+                      type: integer
+                    policy:
+                      type: string
                   type: object
                 env:
                   items:
@@ -1144,6 +1149,32 @@ spec:
             status:
               description: NacosStatus defines the observed state of Nacos
               properties:
+                pg:
+                  description: Postgres initialization status (operator-managed)
+                  properties:
+                    initialized:
+                      type: boolean
+                    initVersion:
+                      format: int32
+                      type: integer
+                    lastInitTime:
+                      format: date-time
+                      type: string
+                    lastInitConfigMap:
+                      type: string
+                    lastInitSQLKey:
+                      type: string
+                    lastInitCMResourceVersion:
+                      type: string
+                    lastInitSecretResourceVersion:
+                      type: string
+                    lastInitSQLChecksum:
+                      type: string
+                    lastResult:
+                      type: string
+                    lastMessage:
+                      type: string
+                  type: object
                 conditions:
                   description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "make" to regenerate code after modifying

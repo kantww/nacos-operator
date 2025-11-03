@@ -148,6 +148,12 @@ func setDefaultPostgres(nacos *nacosgroupv1alpha1.Nacos) {
         if !nacos.Spec.PGInit.Enabled {
             nacos.Spec.PGInit.Enabled = true
         }
+        if nacos.Spec.PGInit.SchemaVersion == 0 {
+            nacos.Spec.PGInit.SchemaVersion = 1
+        }
+        if nacos.Spec.PGInit.Policy == "" {
+            nacos.Spec.PGInit.Policy = "IfNotPresent"
+        }
     }
 }
 
@@ -488,13 +494,12 @@ func (e *KindClient) buildClientService(nacos *nacosgroupv1alpha1.Nacos) *v1.Ser
 			Selector: labels,
 		},
 	}
-	//client-service提供双栈
-	var ipf = make([]v1.IPFamily, 0)
-	ipf = append(ipf, v1.IPv4Protocol)
-	ipf = append(ipf, v1.IPv6Protocol)
-	svc.Spec.IPFamilies = ipf
-	var ipPli = v1.IPFamilyPolicyPreferDualStack
-	svc.Spec.IPFamilyPolicy = &ipPli
+    // client-service 默认使用 IPv4 单栈，兼容未开启 IPv6 的集群
+    var ipf = make([]v1.IPFamily, 0)
+    ipf = append(ipf, v1.IPv4Protocol)
+    svc.Spec.IPFamilies = ipf
+    var ipPli = v1.IPFamilyPolicySingleStack
+    svc.Spec.IPFamilyPolicy = &ipPli
 	myErrors.EnsureNormal(controllerutil.SetControllerReference(nacos, svc, e.scheme))
 	return svc
 }

@@ -701,6 +701,15 @@ spec:
                     policy:
                       type: string
                   type: object
+                identitySecretRef:
+                  properties:
+                    name:
+                      type: string
+                    keyKey:
+                      type: string
+                    valueKey:
+                      type: string
+                  type: object
                 adminCredentialsSecretRef:
                   properties:
                     name:

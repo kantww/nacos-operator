@@ -62,6 +62,8 @@ type NacosSpec struct {
     AdminCredentialsSecretRef AdminCredentialsSecretRef `json:"adminCredentialsSecretRef,omitempty"`
     // Optional external checksum used to explicitly trigger rotation when changed
     AdminSecretChecksum       string                    `json:"adminSecretChecksum,omitempty"`
+    // Identity header source from Secret (preferred)
+    IdentitySecretRef         *IdentitySecretRef        `json:"identitySecretRef,omitempty"`
 }
 
 type Certification struct {
@@ -131,6 +133,14 @@ type PGInitSpec struct {
     SchemaVersion  int32                    `json:"schemaVersion,omitempty"`
     // Init policy: IfNotPresent|Always|Never|BumpVersion (default IfNotPresent)
     Policy         string                   `json:"policy,omitempty"`
+}
+
+// IdentitySecretRef references a Secret that holds Nacos server identity header
+// key and value. Keys default to identity_key / identity_value when omitted.
+type IdentitySecretRef struct {
+    Name     string `json:"name,omitempty"`
+    KeyKey   string `json:"keyKey,omitempty"`
+    ValueKey string `json:"valueKey,omitempty"`
 }
 
 // AdminCredentialsSecretRef references the Secret that holds admin username and password hash

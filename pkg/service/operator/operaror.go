@@ -27,11 +27,11 @@ type OperatorClient struct {
 
 func NewOperatorClient(logger log.Logger, clientset *kubernetes.Clientset, s *runtime.Scheme, client client.Client) *OperatorClient {
 	service := k8s.NewK8sService(clientset, logger)
-	return &OperatorClient{
+    return &OperatorClient{
 		// 资源客户端
 		KindClient: NewKindClient(logger, service, s),
-		// 检测客户端
-		CheckClient: NewCheckClient(logger, service),
+        // 检测客户端
+        CheckClient: NewCheckClient(logger, service, client),
 		// 状态客户端
 		StatusClient: NewStatusClient(logger, service, client),
 		// 维护客户端

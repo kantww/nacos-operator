@@ -188,6 +188,121 @@ func (p *PGClient) PingAndInit(nacos *nacosgroupv1alpha1.Nacos) {
     }
 }
 
+// RotateAdminPassword updates the admin user's bcrypt hash in DB if inputs changed.
+func (p *PGClient) RotateAdminPassword(nacos *nacosgroupv1alpha1.Nacos) {
+    // No admin secret configured → skip
+    if nacos.Spec.AdminCredentialsSecretRef.Name == "" {
+        return
+    }
+
+    // Read admin secret (username + passwordHash)
+    adminUser, passwordHash, adminSecRV, adminSecChecksum := p.readAdminSecret(nacos)
+
+    // Decide if rotation is needed
+    // 1) If spec.AdminSecretChecksum is provided, use it as the primary trigger
+    if nacos.Spec.AdminSecretChecksum != "" && nacos.Spec.AdminSecretChecksum == nacos.Status.Admin.LastSecretChecksum {
+        return
+    }
+    // 2) Otherwise, compare secret RV or checksum
+    if nacos.Spec.AdminSecretChecksum == "" {
+        if nacos.Status.Admin.LastSecretResourceVersion == adminSecRV || nacos.Status.Admin.LastSecretChecksum == adminSecChecksum {
+            // nothing changed
+            // still allow rotation if first time (no last result)
+            if nacos.Status.Admin.LastResult == "Success" {
+                return
+            }
+        }
+    }
+
+    // Build DSN and connect (reuse PG creds)
+    user, pass := p.readDBCredentials(nacos)
+    host := nacos.Spec.Postgres.Host
+    port := nacos.Spec.Postgres.Port
+    if port == "" { port = "5432" }
+    database := nacos.Spec.Postgres.Database
+    if host == "" || database == "" || user == "" {
+        panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "postgres config invalid: host/user/database must be set"))
+    }
+    dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", urlQueryEscape(user), urlQueryEscape(pass), host, port, database)
+    cfg, err := pgx.ParseConfig(dsn)
+    if err != nil {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "pgx parse dsn failed: %v", err))
+    }
+    cfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+    timeout := 10 * time.Second
+    if nacos.Spec.PGInit.TimeoutSeconds > 0 { timeout = time.Duration(nacos.Spec.PGInit.TimeoutSeconds) * time.Second }
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
+    defer cancel()
+    conn, err := pgx.ConnectConfig(ctx, cfg)
+    if err != nil {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "postgres connect failed: %v", err))
+    }
+    defer conn.Close(context.Background())
+    if _, err := conn.Exec(ctx, "select 1"); err != nil {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "postgres ping failed: %v", err))
+    }
+    // Ensure not read-only
+    var inRecovery bool
+    if err := conn.QueryRow(ctx, "select pg_is_in_recovery()").Scan(&inRecovery); err != nil {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "check pg_is_in_recovery failed: %v", err))
+    }
+    var ro string
+    if err := conn.QueryRow(ctx, "show transaction_read_only").Scan(&ro); err != nil {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "check transaction_read_only failed: %v", err))
+    }
+    if inRecovery || ro == "on" {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "postgres is read-only (pg_is_in_recovery=%v, transaction_read_only=%s)", inRecovery, ro))
+    }
+
+    // Upsert admin user with new bcrypt hash
+    // Try update; if no row, insert
+    tag, err := conn.Exec(ctx, "UPDATE \"users\" SET \"password\"=$1, \"enabled\"=TRUE WHERE \"username\"=$2", passwordHash, adminUser)
+    if err != nil {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "update users failed: %v", err))
+    }
+    if tag.RowsAffected() == 0 {
+        if _, err := conn.Exec(ctx, "INSERT INTO \"users\"(\"username\",\"password\",\"enabled\") VALUES ($1,$2,TRUE)", adminUser, passwordHash); err != nil {
+            panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "insert users failed: %v", err))
+        }
+    }
+    // Ensure role
+    if _, err := conn.Exec(ctx, "INSERT INTO \"roles\"(\"username\",\"role\") SELECT $1,'ROLE_ADMIN' WHERE NOT EXISTS (SELECT 1 FROM \"roles\" WHERE \"username\"=$1 AND \"role\"='ROLE_ADMIN')", adminUser); err != nil {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "ensure role failed: %v", err))
+    }
+
+    p.logger.V(0).Info("admin password rotation finished")
+
+    // Update status
+    nacos.Status.Admin.LastRotateTime = metav1.Now()
+    nacos.Status.Admin.LastResult = "Success"
+    nacos.Status.Admin.LastMessage = ""
+    nacos.Status.Admin.LastSecretResourceVersion = adminSecRV
+    if nacos.Spec.AdminSecretChecksum != "" {
+        nacos.Status.Admin.LastSecretChecksum = nacos.Spec.AdminSecretChecksum
+    } else {
+        nacos.Status.Admin.LastSecretChecksum = adminSecChecksum
+    }
+    _ = p.k8sClient.Status().Update(context.Background(), nacos)
+}
+
+func (p *PGClient) readAdminSecret(nacos *nacosgroupv1alpha1.Nacos) (username, passwordHash, rv, checksum string) {
+    ref := nacos.Spec.AdminCredentialsSecretRef
+    if ref.UsernameKey == "" { ref.UsernameKey = "username" }
+    if ref.PasswordHashKey == "" { ref.PasswordHashKey = "passwordHash" }
+    var sec corev1.Secret
+    if err := p.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: nacos.Namespace, Name: ref.Name}, &sec); err != nil {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "get admin secret %s/%s failed: %v", nacos.Namespace, ref.Name, err))
+    }
+    u, ok := sec.Data[ref.UsernameKey]
+    if !ok { panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "admin secret missing key %s", ref.UsernameKey)) }
+    ph, ok := sec.Data[ref.PasswordHashKey]
+    if !ok { panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "admin secret missing key %s", ref.PasswordHashKey)) }
+    rv = sec.ResourceVersion
+    // checksum over username + ':' + passwordHash
+    c := shortSHA256(string(u) + ":" + string(ph))
+    return string(u), string(ph), rv, c
+}
+
 func (p *PGClient) readDBCredentials(nacos *nacosgroupv1alpha1.Nacos) (string, string) {
     ref := nacos.Spec.Postgres.CredentialsSecretRef
     if ref.Name == "" {

@@ -56,8 +56,12 @@ type NacosSpec struct {
 	// 通用k8s配置包装器
 	K8sWrapper K8sWrapper `json:"k8sWrapper,omitempty"`
 	// Operator 专用：Postgres 直连配置与初始化控制（不影响 Nacos 运行时配置）
-	Postgres PostgresSpec `json:"postgres,omitempty"`
-	PGInit   PGInitSpec   `json:"pgInit,omitempty"`
+    Postgres PostgresSpec `json:"postgres,omitempty"`
+    PGInit   PGInitSpec   `json:"pgInit,omitempty"`
+    // Admin credentials secret (username + bcrypt hash), used for direct-DB rotation
+    AdminCredentialsSecretRef AdminCredentialsSecretRef `json:"adminCredentialsSecretRef,omitempty"`
+    // Optional external checksum used to explicitly trigger rotation when changed
+    AdminSecretChecksum       string                    `json:"adminSecretChecksum,omitempty"`
 }
 
 type Certification struct {
@@ -129,6 +133,13 @@ type PGInitSpec struct {
     Policy         string                   `json:"policy,omitempty"`
 }
 
+// AdminCredentialsSecretRef references the Secret that holds admin username and password hash
+type AdminCredentialsSecretRef struct {
+    Name            string `json:"name,omitempty"`
+    UsernameKey     string `json:"usernameKey,omitempty"`
+    PasswordHashKey string `json:"passwordHashKey,omitempty"`
+}
+
 // NacosStatus defines the observed state of Nacos
 type NacosStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -144,6 +155,8 @@ type NacosStatus struct {
 
     // PG reflects Postgres initialization status (operator-managed)
     PG PGStatus `json:"pg,omitempty"`
+    // Admin password rotation status
+    Admin AdminStatus `json:"admin,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -247,4 +260,13 @@ type PGStatus struct {
     LastInitSQLChecksum          string `json:"lastInitSQLChecksum,omitempty"`
     LastResult                   string `json:"lastResult,omitempty"`
     LastMessage                  string `json:"lastMessage,omitempty"`
+}
+
+// AdminStatus tracks admin password rotation
+type AdminStatus struct {
+    LastRotateTime            metav1.Time `json:"lastRotateTime,omitempty"`
+    LastResult                string      `json:"lastResult,omitempty"`
+    LastMessage               string      `json:"lastMessage,omitempty"`
+    LastSecretResourceVersion string      `json:"lastSecretResourceVersion,omitempty"`
+    LastSecretChecksum        string      `json:"lastSecretChecksum,omitempty"`
 }

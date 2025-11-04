@@ -701,6 +701,17 @@ spec:
                     policy:
                       type: string
                   type: object
+                adminCredentialsSecretRef:
+                  properties:
+                    name:
+                      type: string
+                    usernameKey:
+                      type: string
+                    passwordHashKey:
+                      type: string
+                  type: object
+                adminSecretChecksum:
+                  type: string
                 env:
                   items:
                     description: EnvVar represents an environment variable present in
@@ -1173,6 +1184,21 @@ spec:
                     lastResult:
                       type: string
                     lastMessage:
+                      type: string
+                  type: object
+                admin:
+                  description: Admin password rotation status
+                  properties:
+                    lastRotateTime:
+                      format: date-time
+                      type: string
+                    lastResult:
+                      type: string
+                    lastMessage:
+                      type: string
+                    lastSecretResourceVersion:
+                      type: string
+                    lastSecretChecksum:
                       type: string
                   type: object
                 conditions:

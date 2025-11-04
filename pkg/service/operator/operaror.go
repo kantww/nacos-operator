@@ -103,5 +103,19 @@ func (c *OperatorClient) CheckAndMakeHeal(nacos *nacosgroupv1alpha1.Nacos) {
 }
 
 func (c *OperatorClient) UpdateStatus(nacos *nacosgroupv1alpha1.Nacos) {
-	c.StatusClient.UpdateStatusRunning(nacos)
+    c.StatusClient.UpdateStatusRunning(nacos)
+}
+
+// RotateAdmin: rotate admin password via direct DB if needed
+func (c *OperatorClient) RotateAdmin(nacos *nacosgroupv1alpha1.Nacos) {
+    if c.PGClient == nil {
+        return
+    }
+    if nacos.Spec.Postgres.Host == "" {
+        return
+    }
+    if nacos.Spec.AdminCredentialsSecretRef.Name == "" {
+        return
+    }
+    c.PGClient.RotateAdminPassword(nacos)
 }

@@ -117,6 +117,7 @@ func (e *KindClient) ValidationField(nacos *nacosgroupv1alpha1.Nacos) {
         setDefaultMysql,
         setDefaultCertification,
         setDefaultPostgres,
+        setDefaultAdminSecret,
     }
 
 	for _, f := range setDefaultValue {
@@ -154,6 +155,16 @@ func setDefaultPostgres(nacos *nacosgroupv1alpha1.Nacos) {
         if nacos.Spec.PGInit.Policy == "" {
             nacos.Spec.PGInit.Policy = "IfNotPresent"
         }
+    }
+}
+
+// setDefaultAdminSecret sets default keys for admin credentials secret
+func setDefaultAdminSecret(nacos *nacosgroupv1alpha1.Nacos) {
+    if nacos.Spec.AdminCredentialsSecretRef.UsernameKey == "" {
+        nacos.Spec.AdminCredentialsSecretRef.UsernameKey = "username"
+    }
+    if nacos.Spec.AdminCredentialsSecretRef.PasswordHashKey == "" {
+        nacos.Spec.AdminCredentialsSecretRef.PasswordHashKey = "passwordHash"
     }
 }
 

@@ -92,6 +92,8 @@ func (r *NacosReconciler) ReconcileWork(instance *nacosgroupv1alpha1.Nacos) bool
 		r.OperaterClient.PreCheck,
 		// PG 连接检查与初始化（前置于资源确保）
 		r.OperaterClient.PGEnsure,
+		// 管理员口令旋转（直连 PG）
+		r.OperaterClient.RotateAdmin,
 		// 保证资源能够创建
 		r.OperaterClient.MakeEnsure,
 		// 检查并保障

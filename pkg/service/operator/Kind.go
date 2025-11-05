@@ -1,12 +1,13 @@
 package operator
 
 import (
-	"fmt"
-	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"nacos.io/nacos-operator/pkg/util/merge"
-	"os"
-	"path/filepath"
+    "fmt"
+    "k8s.io/apimachinery/pkg/api/resource"
+    batchv1 "k8s.io/api/batch/v1"
+    "k8s.io/apimachinery/pkg/runtime"
+    "nacos.io/nacos-operator/pkg/util/merge"
+    "os"
+    "path/filepath"
 	"strconv"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -680,27 +681,50 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 	}
 
 	// 设置存储
-	if nacos.Spec.Volume.Enabled {
-		ss.Spec.VolumeClaimTemplates = append(ss.Spec.VolumeClaimTemplates, v1.PersistentVolumeClaim{
-			Spec: v1.PersistentVolumeClaimSpec{
-				//VolumeName:       "db",
-				StorageClassName: nacos.Spec.Volume.StorageClass,
-				AccessModes:      []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-				Resources: v1.ResourceRequirements{
-					Requests: nacos.Spec.Volume.Requests,
-				},
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "db",
-				Labels: labels,
+	// 新版存储策略（优先支持 HostPath；也兼容 PVC 与 EmptyDir）
+	if nacos.Spec.Volume.HostPath != nil {
+		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
+			Name: "db",
+			VolumeSource: v1.VolumeSource{
+				HostPath: nacos.Spec.Volume.HostPath,
 			},
 		})
-
-		localVolum := v1.VolumeMount{
+		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
 			Name:      "db",
 			MountPath: "/home/nacos/data",
+		})
+	} else if nacos.Spec.Volume.EmptyDir != nil {
+		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
+			Name: "db",
+			VolumeSource: v1.VolumeSource{
+				EmptyDir: nacos.Spec.Volume.EmptyDir,
+			},
+		})
+		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			Name:      "db",
+			MountPath: "/home/nacos/data",
+		})
+	} else if nacos.Spec.Volume.VolumeClaimTemplate != nil {
+		pvc := *nacos.Spec.Volume.VolumeClaimTemplate
+		if pvc.Name == "" {
+			pvc.Name = "db"
 		}
-		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, localVolum)
+		// 默认访问模式
+		if len(pvc.Spec.AccessModes) == 0 {
+			pvc.Spec.AccessModes = []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}
+		}
+		// 如果指定了 PersistentVolumeSize，则写入 PVC 的 requests.storage
+		if nacos.Spec.Volume.PersistentVolumeSize != "" {
+			if pvc.Spec.Resources.Requests == nil {
+				pvc.Spec.Resources.Requests = v1.ResourceList{}
+			}
+			pvc.Spec.Resources.Requests[v1.ResourceStorage] = resource.MustParse(nacos.Spec.Volume.PersistentVolumeSize)
+		}
+		ss.Spec.VolumeClaimTemplates = append(ss.Spec.VolumeClaimTemplates, pvc)
+		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			Name:      pvc.Name,
+			MountPath: "/home/nacos/data",
+		})
 	}
 
 	//probe := &v1.Probe{

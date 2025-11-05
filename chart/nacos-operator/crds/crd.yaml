@@ -1150,19 +1150,22 @@ spec:
                   type: string
                 volume:
                   properties:
-                    enabled:
-                      type: boolean
-                    requests:
-                      additionalProperties:
-                        anyOf:
-                          - type: integer
-                          - type: string
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      description: ResourceList is a set of (resource name, quantity)
-                        pairs.
+                    volumeClaimTemplate:
                       type: object
-                    storageClass:
+                      x-kubernetes-preserve-unknown-fields: true
+                    emptyDir:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    hostPath:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        type:
+                          type: string
+                    keepAfterDeletion:
+                      type: boolean
+                    persistentVolumeSize:
                       type: string
                   type: object
               type: object

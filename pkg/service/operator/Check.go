@@ -56,7 +56,7 @@ func (c *CheckClient) CheckKind(nacos *nacosgroupv1alpha1.Nacos) []corev1.Pod {
 
 func (c *CheckClient) CheckNacos(nacos *nacosgroupv1alpha1.Nacos, pods []corev1.Pod) {
 	leader := ""
-    nacos.Status.Conditions = []nacosgroupv1alpha1.Condition{}
+    nacos.Status.Conditions = []nacosgroupv1alpha1.NacosCondition{}
     identityKey, identityValue := c.resolveIdentityHeader(nacos)
 	// 检查nacos是否访问通
 	for _, pod := range pods {
@@ -76,12 +76,12 @@ func (c *CheckClient) CheckNacos(nacos *nacosgroupv1alpha1.Nacos, pods []corev1.
 			nacos.Status.Version = svc.ExtendInfo.Version
 		}
 
-		condition := nacosgroupv1alpha1.Condition{
-			Status:   "true",
-			Instance: pod.Status.PodIP,
-			PodName:  pod.Name,
-			NodeName: pod.Spec.NodeName,
-		}
+        condition := nacosgroupv1alpha1.NacosCondition{
+            Status:   "true",
+            Instance: pod.Status.PodIP,
+            PodName:  pod.Name,
+            NodeName: pod.Spec.NodeName,
+        }
 		leaderSplit := []string{}
 		if strings.Index(leader, ".") > 0 {
 			leaderSplit = strings.Split(leader, ".")

@@ -55,8 +55,8 @@ type NacosSpec struct {
 	Certification Certification `json:"certification,omitempty"`
 	// 通用k8s配置包装器
 	K8sWrapper K8sWrapper `json:"k8sWrapper,omitempty"`
-	// Operator 专用：Postgres 直连配置与初始化控制（不影响 Nacos 运行时配置）
-    Postgres PostgresSpec `json:"postgres,omitempty"`
+    // Operator 专用：Postgres 直连配置与初始化控制（不影响 Nacos 运行时配置）
+    Postgres NacosPostgresSpec `json:"postgres,omitempty"`
     PGInit   PGInitSpec   `json:"pgInit,omitempty"`
     // Admin credentials secret (username + bcrypt hash), used for direct-DB rotation
     AdminCredentialsSecretRef AdminCredentialsSecretRef `json:"adminCredentialsSecretRef,omitempty"`
@@ -94,9 +94,11 @@ func (m *PodSpecWrapper) UnmarshalJSON(data []byte) error {
 }
 
 type Storage struct {
-	Enabled      bool            `json:"enabled,omitempty"`
-	Requests     v1.ResourceList `json:"requests,omitempty" protobuf:"bytes,2,rep,name=requests,casttype=ResourceList,castkey=ResourceName"`
-	StorageClass *string         `json:"storageClass,omitempty"`
+    VolumeClaimTemplate  *v1.PersistentVolumeClaim `json:"volumeClaimTemplate,omitempty"`
+    EmptyDir             *v1.EmptyDirVolumeSource  `json:"emptyDir,omitempty"`
+    HostPath             *v1.HostPathVolumeSource  `json:"hostPath,omitempty"`
+    KeepAfterDeletion    bool                      `json:"keepAfterDeletion,omitempty"`
+    PersistentVolumeSize string                    `json:"persistentVolumeSize,omitempty"`
 }
 
 type Database struct {
@@ -116,7 +118,7 @@ type PGCredentialsSecretRef struct {
 }
 
 // Operator 直连 PG 的配置（不影响 Nacos 自身的连接方式）
-type PostgresSpec struct {
+type NacosPostgresSpec struct {
     Host                 string                 `json:"host,omitempty"`
     Port                 string                 `json:"port,omitempty"`
     Database             string                 `json:"database,omitempty"`
@@ -155,7 +157,7 @@ type NacosStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	// 记录实例状态
-	Conditions []Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,2,rep,name=conditions"`
+    Conditions []NacosCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,2,rep,name=conditions"`
 	// 记录事件
 	Event []Event `json:"event,omitempty" protobuf:"bytes,4,opt,name=event"`
 	// 运行状态，主要根据这个字段用来判断是否正常
@@ -201,7 +203,7 @@ func init() {
 }
 
 // 状况
-type Condition struct {
+type NacosCondition struct {
 	// Type is the type of the condition.
 	// More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-conditions
 	Type string `json:"type" protobuf:"bytes,1,opt,name=type,casttype=PodConditionType"`

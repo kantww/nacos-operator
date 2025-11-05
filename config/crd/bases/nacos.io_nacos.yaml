@@ -931,13 +931,6 @@ spec:
                 properties:
                   enabled:
                     type: boolean
-                  configMapRef:
-                    properties:
-                      name:
-                        type: string
-                    type: object
-                  sqlKey:
-                    type: string
                   timeoutSeconds:
                     format: int32
                     type: integer
@@ -1463,16 +1456,6 @@ spec:
                     type: integer
                   lastInitTime:
                     format: date-time
-                    type: string
-                  lastInitConfigMap:
-                    type: string
-                  lastInitSQLKey:
-                    type: string
-                  lastInitCMResourceVersion:
-                    type: string
-                  lastInitSecretResourceVersion:
-                    type: string
-                  lastInitSQLChecksum:
                     type: string
                   lastResult:
                     type: string

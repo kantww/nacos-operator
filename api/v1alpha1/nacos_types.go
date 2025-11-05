@@ -128,8 +128,6 @@ type NacosPostgresSpec struct {
 // 初始化控制（Operator 侧）
 type PGInitSpec struct {
     Enabled        bool                     `json:"enabled,omitempty"`
-    ConfigMapRef   *v1.LocalObjectReference `json:"configMapRef,omitempty"`
-    SQLKey         string                   `json:"sqlKey,omitempty"`
     TimeoutSeconds int32                    `json:"timeoutSeconds,omitempty"`
     // Desired schema version; used with policy to decide re-init or migrations
     SchemaVersion  int32                    `json:"schemaVersion,omitempty"`
@@ -265,11 +263,6 @@ type PGStatus struct {
     Initialized                  bool   `json:"initialized,omitempty"`
     InitVersion                  int32  `json:"initVersion,omitempty"`
     LastInitTime                 metav1.Time `json:"lastInitTime,omitempty"`
-    LastInitConfigMap            string `json:"lastInitConfigMap,omitempty"`
-    LastInitSQLKey               string `json:"lastInitSQLKey,omitempty"`
-    LastInitCMResourceVersion    string `json:"lastInitCMResourceVersion,omitempty"`
-    LastInitSecretResourceVersion string `json:"lastInitSecretResourceVersion,omitempty"`
-    LastInitSQLChecksum          string `json:"lastInitSQLChecksum,omitempty"`
     LastResult                   string `json:"lastResult,omitempty"`
     LastMessage                  string `json:"lastMessage,omitempty"`
 }

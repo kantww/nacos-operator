@@ -1,4 +1,4 @@
-package operator
+﻿package operator
 
 import (
     "fmt"
@@ -86,7 +86,7 @@ func (e *KindClient) generateAnnoation() map[string]string {
 	return map[string]string{}
 }
 
-// 合并cr中的label 和 固定的label
+// 合并cr中的label �?固定的label
 func (e *KindClient) MergeLabels(allLabels ...map[string]string) map[string]string {
 	res := map[string]string{}
 	for _, labels := range allLabels {
@@ -140,13 +140,10 @@ func setDefaultPostgres(nacos *nacosgroupv1alpha1.Nacos) {
     }
     // 默认初始化开关与参数（仅当配置了 Postgres 时）
     if nacos.Spec.Postgres.Host != "" {
-        if nacos.Spec.PGInit.SQLKey == "" {
-            nacos.Spec.PGInit.SQLKey = "nacos-pg.sql"
-        }
         if nacos.Spec.PGInit.TimeoutSeconds == 0 {
             nacos.Spec.PGInit.TimeoutSeconds = 20
         }
-        // 若未显式关闭，默认启用
+        // 若未显式关闭，默认启�?
         if !nacos.Spec.PGInit.Enabled {
             nacos.Spec.PGInit.Enabled = true
         }
@@ -170,7 +167,7 @@ func setDefaultAdminSecret(nacos *nacosgroupv1alpha1.Nacos) {
 }
 
 func setDefaultNacosType(nacos *nacosgroupv1alpha1.Nacos) {
-	// 默认设置单节点
+	// 默认设置单节�?
 	if nacos.Spec.Type == "" {
 		nacos.Spec.Type = "standalone"
 	}
@@ -189,11 +186,11 @@ func setDefaultCertification(nacos *nacosgroupv1alpha1.Nacos) {
 }
 
 func setDefaultMysql(nacos *nacosgroupv1alpha1.Nacos) {
-	// 默认设置内置数据库
+	// 默认设置内置数据�?
 	if nacos.Spec.Database.TypeDatabase == "" {
 		nacos.Spec.Database.TypeDatabase = "embedded"
 	}
-	// mysql设置默认值
+	// mysql设置默认�?
 	if nacos.Spec.Database.TypeDatabase == "mysql" {
 		if nacos.Spec.Database.MysqlHost == "" {
 			nacos.Spec.Database.MysqlHost = "127.0.0.1"
@@ -426,7 +423,7 @@ func (e *KindClient) buildJob(nacos *nacosgroupv1alpha1.Nacos) *batchv1.Job {
 }
 
 func readSql(sqlFileName string) string {
-	// abspath：项目的根路径
+	// abspath：项目的根路�?
 	abspath, _ := filepath.Abs("")
 	bytes, err := os.ReadFile(abspath + "/config/sql/" + sqlFileName)
 	if err != nil {
@@ -506,7 +503,7 @@ func (e *KindClient) buildClientService(nacos *nacosgroupv1alpha1.Nacos) *v1.Ser
 			Selector: labels,
 		},
 	}
-    // client-service 默认使用 IPv4 单栈，兼容未开启 IPv6 的集群
+    // client-service 默认使用 IPv4 单栈，兼容未开�?IPv6 的集�?
     var ipf = make([]v1.IPFamily, 0)
     ipf = append(ipf, v1.IPv4Protocol)
     svc.Spec.IPFamilies = ipf
@@ -522,7 +519,7 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 	// 合并cr中原有的label
 	labels = e.MergeLabels(nacos.Labels, labels)
 
-	// 设置默认的环境变量
+	// 设置默认的环境变�?
 	env := append(nacos.Spec.Env, v1.EnvVar{
 		Name:  "PREFER_HOST_MODE",
 		Value: "hostname",
@@ -564,7 +561,7 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 		})
 	}
 
-	// 数据库设置
+	// 数据库设�?
 	if nacos.Spec.Database.TypeDatabase == "embedded" {
 		env = append(env, v1.EnvVar{
 			Name:  "EMBEDDED_STORAGE",
@@ -680,40 +677,33 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 		},
 	}
 
-	// 设置存储
-	// 新版存储策略（优先支持 HostPath；也兼容 PVC 与 EmptyDir）
+	// 设置存储（HostPath 优先，其次 EmptyDir，再次 PVC）
 	if nacos.Spec.Volume.HostPath != nil {
 		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
 			Name: "db",
-			VolumeSource: v1.VolumeSource{
-				HostPath: nacos.Spec.Volume.HostPath,
-			},
+			VolumeSource: v1.VolumeSource{HostPath: nacos.Spec.Volume.HostPath},
 		})
 		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
-			Name:      "db",
-			MountPath: "/home/nacos/data",
+			Name: "db", MountPath: "/home/nacos/data",
 		})
-	} else if nacos.Spec.Volume.EmptyDir != nil {
+	}
+	if nacos.Spec.Volume.EmptyDir != nil && nacos.Spec.Volume.HostPath == nil {
 		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
 			Name: "db",
-			VolumeSource: v1.VolumeSource{
-				EmptyDir: nacos.Spec.Volume.EmptyDir,
-			},
+			VolumeSource: v1.VolumeSource{EmptyDir: nacos.Spec.Volume.EmptyDir},
 		})
 		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
-			Name:      "db",
-			MountPath: "/home/nacos/data",
+			Name: "db", MountPath: "/home/nacos/data",
 		})
-	} else if nacos.Spec.Volume.VolumeClaimTemplate != nil {
+	}
+	if nacos.Spec.Volume.VolumeClaimTemplate != nil && nacos.Spec.Volume.HostPath == nil && nacos.Spec.Volume.EmptyDir == nil {
 		pvc := *nacos.Spec.Volume.VolumeClaimTemplate
 		if pvc.Name == "" {
 			pvc.Name = "db"
 		}
-		// 默认访问模式
 		if len(pvc.Spec.AccessModes) == 0 {
 			pvc.Spec.AccessModes = []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}
 		}
-		// 如果指定了 PersistentVolumeSize，则写入 PVC 的 requests.storage
 		if nacos.Spec.Volume.PersistentVolumeSize != "" {
 			if pvc.Spec.Resources.Requests == nil {
 				pvc.Spec.Resources.Requests = v1.ResourceList{}
@@ -722,8 +712,7 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 		}
 		ss.Spec.VolumeClaimTemplates = append(ss.Spec.VolumeClaimTemplates, pvc)
 		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
-			Name:      pvc.Name,
-			MountPath: "/home/nacos/data",
+			Name: pvc.Name, MountPath: "/home/nacos/data",
 		})
 	}
 
@@ -941,3 +930,4 @@ func (e *KindClient) buildHeadlessServiceCluster(svc *v1.Service, nacos *nacosgr
 	svc.Spec.IPFamilyPolicy = &ipPli
 	return svc
 }
+

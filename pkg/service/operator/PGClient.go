@@ -4,6 +4,8 @@ import (
     "context"
     "fmt"
     "time"
+    "os"
+    "strings"
 
     log "github.com/go-logr/logr"
     corev1 "k8s.io/api/core/v1"
@@ -14,7 +16,6 @@ import (
     "sigs.k8s.io/controller-runtime/pkg/client"
 
     "github.com/jackc/pgx/v5"
-    "strings"
     "crypto/sha256"
     "encoding/hex"
 )
@@ -27,6 +28,8 @@ type PGClient struct {
 func NewPGClient(logger log.Logger, c client.Client) *PGClient {
     return &PGClient{logger: logger, k8sClient: c}
 }
+
+const initSQLPath = "config/sql/nacos-pg.sql"
 
 // PingAndInit performs Postgres connectivity check and optional initialization (idempotent script execution).
 func (p *PGClient) PingAndInit(nacos *nacosgroupv1alpha1.Nacos) {
@@ -89,64 +92,20 @@ func (p *PGClient) PingAndInit(nacos *nacosgroupv1alpha1.Nacos) {
         return
     }
 
-    // Decide whether to run init based on status + policy
-    // Read ConfigMap SQL (also used to get RV and checksum) and Secret RV first
-    cmName := ""
-    if nacos.Spec.PGInit.ConfigMapRef != nil {
-        cmName = nacos.Spec.PGInit.ConfigMapRef.Name
-    }
-    sqlKey := nacos.Spec.PGInit.SQLKey
-    if sqlKey == "" { sqlKey = "nacos-pg.sql" }
-    cmRV := ""
-    sql := ""
-    if cmName != "" {
-        var cm corev1.ConfigMap
-        if err := p.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: nacos.Namespace, Name: cmName}, &cm); err == nil {
-            cmRV = cm.ResourceVersion
-            if s, ok := cm.Data[sqlKey]; ok { sql = s }
-        } else {
-            panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "get ConfigMap %s/%s failed: %v", nacos.Namespace, cmName, err))
-        }
-    } else {
-        panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "pgInit.configMapRef.name is required when pgInit.enabled = true"))
-    }
-    if sql == "" {
-        panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "ConfigMap %s key %s is empty or missing", cmName, sqlKey))
-    }
-
-    // Secret RV
-    secRV := p.readDBSecretRV(nacos)
-    sqlChecksum := shortSHA256(sql)
-
-    desiredVer := nacos.Spec.PGInit.SchemaVersion
-    if desiredVer == 0 { desiredVer = 1 }
-    policy := nacos.Spec.PGInit.Policy
-    if policy == "" { policy = "IfNotPresent" }
-
-    shouldInit := false
-    if !nacos.Status.PG.Initialized {
-        shouldInit = true
-    } else {
-        switch policy {
-        case "Never":
-            shouldInit = false
-        case "Always":
-            shouldInit = true
-        case "BumpVersion":
-            shouldInit = nacos.Status.PG.InitVersion < desiredVer
-        default: // IfNotPresent
-            // Run only if version behind or inputs changed
-            if nacos.Status.PG.InitVersion < desiredVer ||
-               nacos.Status.PG.LastInitCMResourceVersion != cmRV ||
-               nacos.Status.PG.LastInitSecretResourceVersion != secRV ||
-               nacos.Status.PG.LastInitSQLChecksum != sqlChecksum {
-                shouldInit = true
-            }
-        }
-    }
-    if !shouldInit {
-        p.logger.V(0).Info("postgres already initialized; skipping", "version", nacos.Status.PG.InitVersion)
+    // Simplified: Only run once when not initialized
+    if nacos.Status.PG.Initialized {
+        p.logger.V(0).Info("postgres already initialized; skipping")
         return
+    }
+
+    // Read SQL from fixed path inside the image
+    data, err := os.ReadFile(initSQLPath)
+    if err != nil {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "read init sql failed from %s: %v", initSQLPath, err))
+    }
+    sql := string(data)
+    if sql == "" {
+        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "init sql at %s is empty", initSQLPath))
     }
 
     // Optional: Only as a guard, not the main decision (status-driven)
@@ -156,6 +115,10 @@ func (p *PGClient) PingAndInit(nacos *nacosgroupv1alpha1.Nacos) {
     if _, err := conn.Exec(ctx, sql); err != nil {
         panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "execute init sql failed: %v", err))
     }
+
+    // Determine desired schema version (default 1)
+    desiredVer := nacos.Spec.PGInit.SchemaVersion
+    if desiredVer == 0 { desiredVer = 1 }
 
     // Ensure/Upsert sentinel version table
     if _, err := conn.Exec(ctx, "CREATE TABLE IF NOT EXISTS \"nacos_schema_version\" (version int NOT NULL PRIMARY KEY, updated_at timestamptz NOT NULL DEFAULT now())"); err != nil {
@@ -175,11 +138,6 @@ func (p *PGClient) PingAndInit(nacos *nacosgroupv1alpha1.Nacos) {
     nacos.Status.PG.Initialized = true
     nacos.Status.PG.InitVersion = desiredVer
     nacos.Status.PG.LastInitTime = metav1.Now()
-    nacos.Status.PG.LastInitConfigMap = cmName
-    nacos.Status.PG.LastInitSQLKey = sqlKey
-    nacos.Status.PG.LastInitCMResourceVersion = cmRV
-    nacos.Status.PG.LastInitSecretResourceVersion = secRV
-    nacos.Status.PG.LastInitSQLChecksum = sqlChecksum
     nacos.Status.PG.LastResult = "Success"
     nacos.Status.PG.LastMessage = ""
     // Persist status
@@ -341,24 +299,7 @@ func (p *PGClient) readDBSecretRV(nacos *nacosgroupv1alpha1.Nacos) string {
     return sec.ResourceVersion
 }
 
-func (p *PGClient) loadInitSQL(nacos *nacosgroupv1alpha1.Nacos) string {
-    // Require ConfigMap per user requirement
-    if nacos.Spec.PGInit.ConfigMapRef == nil || nacos.Spec.PGInit.ConfigMapRef.Name == "" {
-        panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "pgInit.configMapRef.name is required when pgInit.enabled = true"))
-    }
-    key := nacos.Spec.PGInit.SQLKey
-    if key == "" {
-        key = "nacos-pg.sql"
-    }
-    var cm corev1.ConfigMap
-    if err := p.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: nacos.Namespace, Name: nacos.Spec.PGInit.ConfigMapRef.Name}, &cm); err != nil {
-        panic(myErrors.New(myErrors.CODE_ERR_SYSTEM, "get ConfigMap %s/%s failed: %v", nacos.Namespace, nacos.Spec.PGInit.ConfigMapRef.Name, err))
-    }
-    if s, ok := cm.Data[key]; ok && s != "" {
-        return s
-    }
-    panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "ConfigMap %s key %s is empty or missing", nacos.Spec.PGInit.ConfigMapRef.Name, key))
-}
+// legacy loadInitSQL removed: init SQL now read from fixed image path
 
 func shortSHA256(s string) string {
     h := sha256.Sum256([]byte(s))

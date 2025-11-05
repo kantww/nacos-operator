@@ -1,6 +1,6 @@
 module nacos.io/nacos-operator
 
-go 1.16
+go 1.24
 
 require (
 	github.com/go-logr/logr v0.4.0
@@ -11,4 +11,5 @@ require (
 	k8s.io/client-go v0.21.4
 	k8s.io/klog v1.0.0
 	sigs.k8s.io/controller-runtime v0.9.8-0.20211019125639-aa2b3e68a52d
+	github.com/jackc/pgx/v5 v5.5.5
 )

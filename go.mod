@@ -1,4 +1,4 @@
-module github.com/kantww/nacos-operator
+module nacos.io/nacos-operator
 
 go 1.24
 

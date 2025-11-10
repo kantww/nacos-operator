@@ -25,11 +25,15 @@ import (
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	nacosgroupv1alpha1 "nacos.io/nacos-operator/api/v1alpha1"
 
@@ -120,7 +124,38 @@ func (r *NacosReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nacosgroupv1alpha1.Nacos{}).
 		Owns(&appsv1.StatefulSet{}).
+		Watches(&source.Kind{Type: &corev1.ConfigMap{}}, handler.EnqueueRequestsFromMapFunc(r.findNacosForConfigMap)).
 		Complete(r)
+}
+
+// findNacosForConfigMap finds Nacos CRs that reference the given ConfigMap
+func (r *NacosReconciler) findNacosForConfigMap(obj client.Object) []reconcile.Request {
+	cm := obj.(*corev1.ConfigMap)
+
+	// List all Nacos CRs in the same namespace
+	nacosList := &nacosgroupv1alpha1.NacosList{}
+	if err := r.Client.List(context.Background(), nacosList, client.InNamespace(cm.Namespace)); err != nil {
+		r.Log.Error(err, "Failed to list Nacos CRs")
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for _, nacos := range nacosList.Items {
+		// Check if this ConfigMap is referenced by the Nacos CR
+		if (nacos.Spec.UserConfigRef != nil && nacos.Spec.UserConfigRef.Name == cm.Name) ||
+			(nacos.Spec.InternalConfigRef != nil && nacos.Spec.InternalConfigRef.Name == cm.Name) {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      nacos.Name,
+					Namespace: nacos.Namespace,
+				},
+			})
+			r.Log.Info("ConfigMap change detected, triggering reconcile",
+				"configmap", cm.Name, "nacos", nacos.Name)
+		}
+	}
+
+	return requests
 }
 
 // 全局异常处理

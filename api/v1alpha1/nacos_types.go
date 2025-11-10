@@ -51,6 +51,12 @@ type NacosSpec struct {
 	Volume       Storage  `json:"volume,omitempty"`
 	// 配置文件
 	Config string `json:"config,omitempty"`
+	// 配置管理：用户自定义配置 ConfigMap 引用
+	UserConfigRef *ConfigMapRef `json:"userConfigRef,omitempty"`
+	// 配置管理：内置配置 ConfigMap 引用
+	InternalConfigRef *ConfigMapRef `json:"internalConfigRef,omitempty"`
+	// 配置管理：最终合并后的 ConfigMap 名称（由 operator 创建和管理）
+	FinalConfigName string `json:"finalConfigName,omitempty"`
 	// 开启认证
 	Certification Certification `json:"certification,omitempty"`
 	// 通用k8s配置包装器
@@ -71,6 +77,12 @@ type Certification struct {
 	Token              string `json:"token,omitempty"`
 	TokenExpireSeconds string `json:"token_expire_seconds,omitempty"`
 	CacheEnabled       bool   `json:"cache_enabled,omitempty"`
+}
+
+// ConfigMapRef references a ConfigMap for configuration management
+type ConfigMapRef struct {
+	Name string `json:"name,omitempty"`
+	Key  string `json:"key,omitempty"`
 }
 
 type K8sWrapper struct {
@@ -167,6 +179,8 @@ type NacosStatus struct {
     PG PGStatus `json:"pg,omitempty"`
     // Admin password rotation status
     Admin AdminStatus `json:"admin,omitempty"`
+    // Config digest tracks the hash of merged configuration for rolling updates
+    ConfigDigest string `json:"configDigest,omitempty"`
 }
 
 // +kubebuilder:object:root=true

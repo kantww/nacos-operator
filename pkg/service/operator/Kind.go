@@ -1,6 +1,7 @@
 ﻿package operator
 
 import (
+    "crypto/sha256"
     "fmt"
     "k8s.io/apimachinery/pkg/api/resource"
     batchv1 "k8s.io/api/batch/v1"
@@ -245,10 +246,36 @@ func (e *KindClient) EnsureHeadlessServiceCluster(nacos *nacosgroupv1alpha1.Naco
 }
 
 func (e *KindClient) EnsureConfigmap(nacos *nacosgroupv1alpha1.Nacos) {
+	// 新的配置管理方式：合并 user-config 和 internal-config
+	if nacos.Spec.UserConfigRef != nil || nacos.Spec.InternalConfigRef != nil {
+		cm := e.buildMergedConfigMap(nacos)
+		myErrors.EnsureNormal(e.k8sService.CreateOrUpdateConfigMap(nacos.Namespace, cm))
+
+		// 计算配置的 digest 并保存到 Nacos status 中
+		if content, ok := cm.Data["application.properties"]; ok {
+			digest := e.computeConfigDigest(content)
+			nacos.Status.ConfigDigest = digest
+			e.logger.Info("Computed config digest", "digest", digest)
+		}
+		return
+	}
+
+	// 旧的配置方式：直接使用 Config 字段
 	if nacos.Spec.Config != "" {
 		cm := e.buildConfigMap(nacos)
 		myErrors.EnsureNormal(e.k8sService.CreateIfNotExistsConfigMap(nacos.Namespace, cm))
 	}
+}
+
+// computeConfigDigest 计算配置内容的 SHA256 digest
+func (e *KindClient) computeConfigDigest(content string) string {
+	// 使用 crypto/sha256 计算配置内容的哈希值
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(content)))
+	// 取前16个字符作为简短的digest
+	if len(hash) > 16 {
+		return hash[:16]
+	}
+	return hash
 }
 
 func (e *KindClient) EnsureMysqlConfigMap(nacos *nacosgroupv1alpha1.Nacos) {
@@ -626,7 +653,8 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 			Selector:            &metav1.LabelSelector{MatchLabels: labels},
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels:      labels,
+					Annotations: make(map[string]string),
 				},
 				Spec: v1.PodSpec{
 					Volumes:      []v1.Volume{},
@@ -739,7 +767,34 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 	//	ss.Spec.Template.Spec.Containers[0].ReadinessProbe = probe
 	//}
 
-	if nacos.Spec.Config != "" {
+	// 新的配置管理方式：挂载 final-config
+	if nacos.Spec.UserConfigRef != nil || nacos.Spec.InternalConfigRef != nil {
+		finalConfigName := nacos.Spec.FinalConfigName
+		if finalConfigName == "" {
+			finalConfigName = fmt.Sprintf("%s-final-config", nacos.Name)
+		}
+
+		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
+			Name: "config",
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{Name: finalConfigName},
+					Items: []v1.KeyToPath{
+						{
+							Key:  "application.properties",
+							Path: "application.properties",
+						},
+					},
+				},
+			},
+		})
+		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			Name:      "config",
+			MountPath: "/home/nacos/conf/application.properties",
+			SubPath:   "application.properties",
+		})
+	} else if nacos.Spec.Config != "" {
+		// 旧的配置方式：挂载 custom.properties
 		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
 			Name: "config",
 			VolumeSource: v1.VolumeSource{
@@ -760,6 +815,16 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 			SubPath:   "custom.properties",
 		})
 	}
+
+	// 如果使用配置管理功能，将 config digest 添加到 StatefulSet template annotations
+	// 这样当配置变化时，StatefulSet 会触发滚动更新
+	if nacos.Spec.UserConfigRef != nil || nacos.Spec.InternalConfigRef != nil {
+		if nacos.Status.ConfigDigest != "" {
+			ss.Spec.Template.Annotations["nacos.io/config-digest"] = nacos.Status.ConfigDigest
+			e.logger.Info("Added config digest to StatefulSet template", "digest", nacos.Status.ConfigDigest)
+		}
+	}
+
 	myErrors.EnsureNormal(controllerutil.SetControllerReference(nacos, ss, e.scheme))
 
 	if nacos.Spec.Database.TypeDatabase == "mysql" && nacos.Spec.MysqlInitImage != "" {
@@ -814,6 +879,91 @@ func (e *KindClient) buildConfigMap(nacos *nacosgroupv1alpha1.Nacos) *v1.ConfigM
 	cm := v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        e.generateName(nacos),
+			Namespace:   nacos.Namespace,
+			Labels:      labels,
+			Annotations: nacos.Annotations,
+		},
+		Data: data,
+	}
+	myErrors.EnsureNormal(controllerutil.SetControllerReference(nacos, &cm, e.scheme))
+	return &cm
+}
+
+// buildMergedConfigMap 合并 user-config 和 internal-config 创建 final-config
+func (e *KindClient) buildMergedConfigMap(nacos *nacosgroupv1alpha1.Nacos) *v1.ConfigMap {
+	labels := e.generateLabels(nacos.Name, NACOS)
+	labels = e.MergeLabels(nacos.Labels, labels)
+
+	// 读取 internal-config 内容
+	internalContent := ""
+	if nacos.Spec.InternalConfigRef != nil && nacos.Spec.InternalConfigRef.Name != "" {
+		internalCM, err := e.k8sService.GetConfigMap(nacos.Namespace, nacos.Spec.InternalConfigRef.Name)
+		if err != nil {
+			e.logger.Error(err, "Failed to get internal-config ConfigMap", "name", nacos.Spec.InternalConfigRef.Name)
+			panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "Failed to get internal-config ConfigMap %s: %v", nacos.Spec.InternalConfigRef.Name, err))
+		}
+
+		key := nacos.Spec.InternalConfigRef.Key
+		if key == "" {
+			key = "internal.properties"
+		}
+
+		if content, ok := internalCM.Data[key]; ok {
+			internalContent = content
+		} else {
+			e.logger.Error(nil, "Internal-config key not found", "key", key)
+			panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "Internal-config key not found: %s", key))
+		}
+	}
+
+	// 读取 user-config 内容
+	userContent := ""
+	if nacos.Spec.UserConfigRef != nil && nacos.Spec.UserConfigRef.Name != "" {
+		userCM, err := e.k8sService.GetConfigMap(nacos.Namespace, nacos.Spec.UserConfigRef.Name)
+		if err != nil {
+			e.logger.Error(err, "Failed to get user-config ConfigMap", "name", nacos.Spec.UserConfigRef.Name)
+			panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "Failed to get user-config ConfigMap %s: %v", nacos.Spec.UserConfigRef.Name, err))
+		}
+
+		key := nacos.Spec.UserConfigRef.Key
+		if key == "" {
+			key = "user.properties"
+		}
+
+		if content, ok := userCM.Data[key]; ok {
+			userContent = content
+		} else {
+			e.logger.Error(nil, "User-config key not found", "key", key)
+			panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "User-config key not found: %s", key))
+		}
+	}
+
+	// 合并配置内容：internal-config 在前，user-config 在后
+	// 这样 user-config 中的参数可以覆盖 internal-config 中的同名参数
+	mergedContent := ""
+	if internalContent != "" {
+		mergedContent += "# ===== Internal Configuration =====\n"
+		mergedContent += internalContent
+		mergedContent += "\n\n"
+	}
+	if userContent != "" {
+		mergedContent += "# ===== User Configuration =====\n"
+		mergedContent += userContent
+		mergedContent += "\n"
+	}
+
+	// 确定 final-config 的名称
+	finalConfigName := nacos.Spec.FinalConfigName
+	if finalConfigName == "" {
+		finalConfigName = fmt.Sprintf("%s-final-config", nacos.Name)
+	}
+
+	data := make(map[string]string)
+	data["application.properties"] = mergedContent
+
+	cm := v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        finalConfigName,
 			Namespace:   nacos.Namespace,
 			Labels:      labels,
 			Annotations: nacos.Annotations,

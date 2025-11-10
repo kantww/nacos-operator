@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
@@ -39,6 +40,12 @@ var k8sClient client.Client
 var testEnv *envtest.Environment
 
 func TestAPIs(t *testing.T) {
+	// Skip integration tests on Windows as envtest is not fully supported
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping integration tests on Windows. Run unit tests with: go test ./pkg/... ./test/testutil/...")
+		return
+	}
+
 	RegisterFailHandler(Fail)
 
 	RunSpecsWithDefaultAndCustomReporters(t,

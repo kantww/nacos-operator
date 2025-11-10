@@ -25,7 +25,7 @@ type OperatorClient struct {
     PGClient     *PGClient
 }
 
-func NewOperatorClient(logger log.Logger, clientset *kubernetes.Clientset, s *runtime.Scheme, client client.Client) *OperatorClient {
+func NewOperatorClient(logger log.Logger, clientset kubernetes.Interface, s *runtime.Scheme, client client.Client) *OperatorClient {
 	service := k8s.NewK8sService(clientset, logger)
     return &OperatorClient{
 		// 资源客户端

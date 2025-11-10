@@ -28,7 +28,7 @@ type ServersInfo struct {
 			LastRefreshTime int64 `json:"lastRefreshTime"`
 			RaftMetaData    struct {
 				MetaDataMap struct {
-					NamingInstanceMetadata  struct {
+					NamingInstanceMetadata struct {
 						Leader          string   `json:"leader"`
 						RaftGroupMember []string `json:"raftGroupMember"`
 						Term            int      `json:"term"`
@@ -68,7 +68,7 @@ type ServersInfo struct {
 // GetClusterNodes queries Nacos cluster nodes.
 // identity is optional; when provided as two elements [key, value], it is sent as a header.
 func (c *NacosClient) GetClusterNodes(ip string, identity ...string) (ServersInfo, error) {
-    servers := ServersInfo{}
+	servers := ServersInfo{}
 	//增加支持ipV6 pod状态探测
 	client := &http.Client{}
 	var err error
@@ -84,10 +84,10 @@ func (c *NacosClient) GetClusterNodes(ip string, identity ...string) (ServersInf
 		return servers, err
 	}
 
-    if len(identity) >= 2 && identity[0] != "" {
-        header := http.Header{identity[0]: []string{identity[1]}}
-        req.Header = header
-    }
+	if len(identity) >= 2 && identity[0] != "" {
+		header := http.Header{identity[0]: []string{identity[1]}}
+		req.Header = header
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -99,18 +99,10 @@ func (c *NacosClient) GetClusterNodes(ip string, identity ...string) (ServersInf
 		return servers, err
 	}
 
-    err = json.Unmarshal(body, &servers)
-    if err != nil {
-        fmt.Printf("%s\n", body)
-        return servers, fmt.Errorf("instance: %s ; %s ; body: %s", ip, err.Error(), string(body))
-    }
+	err = json.Unmarshal(body, &servers)
+	if err != nil {
+		fmt.Printf("%s\n", body)
+		return servers, fmt.Errorf("instance: %s ; %s ; body: %s", ip, err.Error(), string(body))
+	}
 	return servers, nil
 }
-
-//func (c *CheckClient) getClusterNodesStaus(ip string) (bool, error) {
-//	str, err := c.getClusterNodes(ip)
-//	if err != nil {
-//		return false, err
-//	}
-//
-//}

@@ -49,6 +49,8 @@ func (c *OperatorClient) MakeEnsure(nacos *nacosgroupv1alpha1.Nacos) {
 		c.KindClient.EnsureConfigmap(nacos)
 		c.KindClient.EnsureStatefulset(nacos)
 		c.KindClient.EnsureService(nacos)
+		// also expose client ports via NodePort service in standalone mode
+		c.KindClient.EnsureClientService(nacos)
 		if nacos.Spec.Database.TypeDatabase == "mysql" && nacos.Spec.MysqlInitImage != "" {
 			c.KindClient.EnsureMysqlConfigMap(nacos)
 			c.KindClient.EnsureJob(nacos)

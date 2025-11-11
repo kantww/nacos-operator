@@ -235,7 +235,7 @@ func (e *KindClient) EnsureServiceCluster(nacos *nacosgroupv1alpha1.Nacos) {
 
 func (e *KindClient) EnsureClientService(nacos *nacosgroupv1alpha1.Nacos) {
 	ss := e.buildClientService(nacos)
-	myErrors.EnsureNormal(e.k8sService.CreateIfNotExistsService(nacos.Namespace, ss))
+	myErrors.EnsureNormal(e.k8sService.CreateOrUpdateService(nacos.Namespace, ss))
 }
 
 func (e *KindClient) EnsureHeadlessServiceCluster(nacos *nacosgroupv1alpha1.Nacos) {
@@ -487,6 +487,7 @@ func (e *KindClient) buildClientService(nacos *nacosgroupv1alpha1.Nacos) *v1.Ser
 			Annotations: annotations,
 		},
 		Spec: v1.ServiceSpec{
+			Type:                     v1.ServiceTypeNodePort,
 			PublishNotReadyAddresses: true,
 			Ports: []v1.ServicePort{
 				{

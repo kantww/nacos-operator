@@ -648,6 +648,25 @@ spec:
                 config:
                   description: 配置文件
                   type: string
+                finalConfigName:
+                  description: 配置管理：最终合并后的 ConfigMap 名称（由 operator 创建和管理）
+                  type: string
+                internalConfigRef:
+                  description: 配置管理：内置配置 ConfigMap 引用
+                  properties:
+                    key:
+                      type: string
+                    name:
+                      type: string
+                  type: object
+                userConfigRef:
+                  description: 配置管理：用户自定义配置 ConfigMap 引用
+                  properties:
+                    key:
+                      type: string
+                    name:
+                      type: string
+                  type: object
                 database:
                   properties:
                     mysqlDb:
@@ -1265,6 +1284,9 @@ spec:
                   description: 运行状态，主要根据这个字段用来判断是否正常
                   type: string
                 version:
+                  type: string
+                configDigest:
+                  description: Config digest tracks the hash of merged configuration for rolling updates
                   type: string
               type: object
           type: object

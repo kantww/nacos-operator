@@ -1,0 +1,170 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nacos-pg-login
+  namespace: rc-36649931534c4217
+type: Opaque
+stringData:
+  username: superusr
+  password: super1u2s3r
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nacos-admin-credentials
+  namespace: rc-36649931534c4217
+type: Opaque
+stringData:
+  username: nacos
+  passwordHash: $2a$10$AwJocQohhujxzQkUYGgx/u60fn4RzCX1ghQBxmRv.QBaayCL7qcJG
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nacos-identity
+  namespace: rc-36649931534c4217
+type: Opaque
+stringData:
+  identity_key: serverIdentity
+  identity_value:  security
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nacos-config
+  namespace: rc-36649931534c4217
+data:
+  application.properties: |
+    # spring
+    server.servlet.contextPath=${SERVER_SERVLET_CONTEXTPATH:/nacos}
+    server.contextPath=/nacos
+    server.port=${NACOS_APPLICATION_PORT:8848}
+    server.tomcat.accesslog.max-days=30
+    server.tomcat.accesslog.pattern=%h %l %u %t "%r" %s %b %D %{User-Agent}i %{Request-Source}i
+    server.tomcat.accesslog.enabled=${TOMCAT_ACCESSLOG_ENABLED:false}
+    server.error.include-message=ALWAYS
+    # default current work dir
+    server.tomcat.basedir=file:.
+    #*************** Config Module Related Configurations ***************#
+    ### Deprecated configuration property, it is recommended to use `spring.sql.init.platform` replaced.
+    # spring.datasource.platform=${SPRING_DATASOURCE_PLATFORM:}
+
+
+    # spring.datasource.platform=postgresql
+    spring.sql.init.platform=postgresql
+    db.url.0=jdbc:postgresql://postgres-database-cluster-1.rc-36649931534c4217.svc.cluster.local:5432/postgres?tcpKeepAlive=true&reWriteBatchedInserts=true&ApplicationName=nacos_java
+    db.user.0=superusr
+    db.password.0=super1u2s3r
+    db.pool.config.driverClassName=org.postgresql.Driver
+    db.pool.config.connectionTestQuery=SELECT 1
+    db.pool.config.initialSize=2
+    db.pool.config.maxActive=10
+    db.pool.config.maxWait=10000
+    db.pool.config.minIdle=2
+    db.pool.config.timeBetweenEvictionRunsMillis=60000
+    db.pool.config.minEvictableIdleTimeMillis=300000
+
+
+
+    nacos.cmdb.dumpTaskInterval=3600
+    nacos.cmdb.eventTaskInterval=10
+    nacos.cmdb.labelTaskInterval=300
+    nacos.cmdb.loadDataAtStart=false
+    db.num=${MYSQL_DATABASE_NUM:1}
+
+    # nacos.core.auth.system.type=nacos
+    nacos.core.auth.enabled=true
+    # nacos.core.auth.default.token.secret.key=VGhpc0lzTXlDdXN0b21TZWNyZXRLZXkwMTIzNDU2Nzg=
+
+
+
+    ## DB connection pool settings
+    db.pool.config.connectionTimeout=${DB_POOL_CONNECTION_TIMEOUT:30000}
+    db.pool.config.validationTimeout=10000
+    db.pool.config.maximumPoolSize=20
+    db.pool.config.minimumIdle=2
+    ### The auth system to use, currently only 'nacos' and 'ldap' is supported:
+    # nacos.core.auth.system.type=nacos
+    ### worked when nacos.core.auth.system.type=nacos
+    ### The token expiration in seconds:
+    nacos.core.auth.plugin.nacos.token.expire.seconds=${NACOS_AUTH_TOKEN_EXPIRE_SECONDS:18000}
+    ### The default token:
+    nacos.core.auth.plugin.nacos.token.secret.key=${NACOS_AUTH_TOKEN:SecretKey012345678901234567890123456789012345678901234567890123456789}
+    ### Turn on/off caching of auth information. By turning on this switch, the update of auth information would have a 15 seconds delay.
+    nacos.core.auth.caching.enabled=${NACOS_AUTH_CACHE_ENABLE:false}
+    nacos.core.auth.enable.userAgentAuthWhite=${NACOS_AUTH_USER_AGENT_AUTH_WHITE_ENABLE:false}
+
+    nacos.core.auth.server.identity.key=${NACOS_AUTH_IDENTITY_KEY:serverIdentity}
+    nacos.core.auth.server.identity.value=${NACOS_AUTH_IDENTITY_VALUE:security}
+    ## spring security config
+    ### turn off security
+    # nacos.security.ignore.urls=${NACOS_SECURITY_IGNORE_URLS:/,/error,/**/*.css,/**/*.js,/**/*.html,/**/*.map,/**/*.svg,/**/*.png,/**/*.ico,/console-fe/public/**,/v1/auth/**,/v1/console/health/**,/actuator/**,/v1/console/server/**}
+    nacos.security.ignore.urls=${NACOS_SECURITY_IGNORE_URLS:/error,/**/*.css,/**/*.js,/**/*.html,/**/*.map,/**/*.svg,/**/*.png,/**/*.ico,/console-fe/public/**,/v1/auth/**,/v1/console/health/**,/v1/console/server/**}
+    # metrics for elastic search
+    management.metrics.export.elastic.enabled=false
+    management.metrics.export.influx.enabled=false
+    nacos.naming.distro.taskDispatchThreadCount=10
+    nacos.naming.distro.taskDispatchPeriod=200
+    nacos.naming.distro.batchSyncKeyCount=1000
+    nacos.naming.distro.initDataRatio=0.9
+    nacos.naming.distro.syncRetryDelay=5000
+    nacos.naming.data.warmup=true
+    nacos.console.ui.enabled=true
+    nacos.core.param.check.enabled=true
+
+    management.endpoints.web.base-path=/actuator
+    # 设置需要鉴权的端点，这里以prometheus为例，实际上*已经包括了所有
+    management.endpoints.web.exposure.include=health,info,prometheus
+---
+apiVersion: nacos.io/v1alpha1
+kind: Nacos
+metadata:
+  name: nacos-rc-36649931534c4217
+  namespace: rc-36649931534c4217
+spec:
+  type: cluster
+  image: docker.appnest.com:30010/paas-docker-dev/nacos/nacos-server:v2.4.3-pg
+  replicas: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 2
+      memory: 2Gi
+  volume:
+    hostPath:
+      path: /data/nacos/data
+      type: DirectoryOrCreate
+    keepAfterDeletion: true
+  k8sWrapper:
+    PodSpec:
+      schedulerName: hostpath-scheduler
+      volumes:
+      - name: nacos-config
+        configMap:
+          defaultMode: 420
+          items:
+          - key: application.properties
+            path: application.properties
+          name: nacos-config
+      containers:
+      # 容器名称与 metadata.name 保持一致
+      - name: nacos-rc-36649931534c4217
+        volumeMounts:
+        - mountPath: /home/nacos/conf/application.properties
+          name: nacos-config
+          subPath: application.properties
+  postgres:
+    host: "postgres-database-cluster-1.rc-36649931534c4217.svc.cluster.local"
+    port: "5432"
+    database: "postgres"
+    credentialsSecretRef:
+      name: "nacos-pg-login"
+  pgInit:
+    enabled: true
+    timeoutSeconds: 20
+  adminCredentialsSecretRef:
+    name: nacos-admin-credentials
+  identitySecretRef:
+    name: nacos-identity

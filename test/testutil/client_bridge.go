@@ -34,6 +34,11 @@ func (b *ClientBridge) SyncFromKubeToCtrl(ctx context.Context, namespace string)
 				if err := b.ctrlClient.Create(ctx, &cm); err != nil {
 					continue
 				}
+			} else {
+				// Update existing ConfigMap with data from kubernetes clientset
+				existing.Data = cm.Data
+				existing.BinaryData = cm.BinaryData
+				b.ctrlClient.Update(ctx, existing)
 			}
 		}
 	}
@@ -66,6 +71,27 @@ func (b *ClientBridge) SyncFromKubeToCtrl(ctx context.Context, namespace string)
 				if err := b.ctrlClient.Create(ctx, &svc); err != nil {
 					continue
 				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// SyncFromCtrlToKube syncs resources from controller-runtime client to kubernetes clientset
+func (b *ClientBridge) SyncFromCtrlToKube(ctx context.Context, namespace string) error {
+	// Sync ConfigMaps
+	cmList := &corev1.ConfigMapList{}
+	if err := b.ctrlClient.List(ctx, cmList, client.InNamespace(namespace)); err == nil {
+		for _, cm := range cmList.Items {
+			// Check if ConfigMap exists in kubernetes clientset
+			_, err := b.kubeClient.CoreV1().ConfigMaps(namespace).Get(ctx, cm.Name, metav1.GetOptions{})
+			if err != nil {
+				// Create if not exists
+				b.kubeClient.CoreV1().ConfigMaps(namespace).Create(ctx, &cm, metav1.CreateOptions{})
+			} else {
+				// Update if exists
+				b.kubeClient.CoreV1().ConfigMaps(namespace).Update(ctx, &cm, metav1.UpdateOptions{})
 			}
 		}
 	}

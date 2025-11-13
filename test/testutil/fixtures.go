@@ -42,6 +42,13 @@ func NewNacosCluster(name, namespace string, replicas int32) *nacosgroupv1alpha1
 			Database: nacosgroupv1alpha1.Database{
 				TypeDatabase: "embedded",
 			},
+			K8sWrapper: nacosgroupv1alpha1.K8sWrapper{
+				PodSpec: nacosgroupv1alpha1.PodSpecWrapper{
+					Spec: corev1.PodSpec{
+						SchedulerName: "hostpath-scheduler",
+					},
+				},
+			},
 		},
 		Status: nacosgroupv1alpha1.NacosStatus{
 			Phase: nacosgroupv1alpha1.PhaseNone,

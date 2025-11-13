@@ -26,11 +26,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GO111MODULE=on go build  -a -v
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM mirrors.sangfor.com/shenkonghui/distroless-static:nonroot
+FROM docker.sangfor.com/paas-docker-base/alpine:3.17.3
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /workspace/config/sql/nacos-mysql.sql config/sql/nacos-mysql.sql
 COPY --from=builder /workspace/config/sql/nacos-pg.sql config/sql/nacos-pg.sql
-USER nonroot:nonroot
 
 ENTRYPOINT ["/manager"]

@@ -1055,8 +1055,8 @@ func (e *KindClient) buildStatefulsetCluster(nacos *nacosgroupv1alpha1.Nacos, ss
 		},
 	}
 	ss.Spec.Template.Spec.Containers[0].Env = append(ss.Spec.Template.Spec.Containers[0].Env, env...)
-	// 先检查域名解析再启动
-	ss.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", fmt.Sprintf("%s&&bin/docker-startup.sh", fmt.Sprintf(initScrit, serivceNoPort))}
+	// fix by yrc，去掉前置网络检查，避免灾难恢复场景单节点永久故障整个集群无法恢复
+	ss.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "bin/docker-startup.sh"}
 	return ss
 }
 

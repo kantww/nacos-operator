@@ -1,15 +1,16 @@
 ﻿package operator
 
 import (
-    "crypto/sha256"
-    "fmt"
-    "k8s.io/apimachinery/pkg/api/resource"
-    batchv1 "k8s.io/api/batch/v1"
-    "k8s.io/apimachinery/pkg/runtime"
-    "nacos.io/nacos-operator/pkg/util/merge"
-    "os"
-    "path/filepath"
+	"crypto/sha256"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
+
+	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
+	"nacos.io/nacos-operator/pkg/util/merge"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -114,13 +115,13 @@ func (e *KindClient) generateClientSvcName(nacos *nacosgroupv1alpha1.Nacos) stri
 // CR格式验证
 func (e *KindClient) ValidationField(nacos *nacosgroupv1alpha1.Nacos) {
 
-    setDefaultValue := []func(nacos *nacosgroupv1alpha1.Nacos){
-        setDefaultNacosType,
-        setDefaultMysql,
-        setDefaultCertification,
-        setDefaultPostgres,
-        setDefaultAdminSecret,
-    }
+	setDefaultValue := []func(nacos *nacosgroupv1alpha1.Nacos){
+		setDefaultNacosType,
+		setDefaultMysql,
+		setDefaultCertification,
+		setDefaultPostgres,
+		setDefaultAdminSecret,
+	}
 
 	for _, f := range setDefaultValue {
 		f(nacos)
@@ -128,43 +129,43 @@ func (e *KindClient) ValidationField(nacos *nacosgroupv1alpha1.Nacos) {
 }
 
 func setDefaultPostgres(nacos *nacosgroupv1alpha1.Nacos) {
-    // 默认端口
-    if nacos.Spec.Postgres.Port == "" {
-        nacos.Spec.Postgres.Port = "5432"
-    }
-    // 默认凭据 key
-    if nacos.Spec.Postgres.CredentialsSecretRef.UsernameKey == "" {
-        nacos.Spec.Postgres.CredentialsSecretRef.UsernameKey = "username"
-    }
-    if nacos.Spec.Postgres.CredentialsSecretRef.PasswordKey == "" {
-        nacos.Spec.Postgres.CredentialsSecretRef.PasswordKey = "password"
-    }
-    // 默认初始化开关与参数（仅当配置了 Postgres 时）
-    if nacos.Spec.Postgres.Host != "" {
-        if nacos.Spec.PGInit.TimeoutSeconds == 0 {
-            nacos.Spec.PGInit.TimeoutSeconds = 20
-        }
-        // 若未显式关闭，默认启�?
-        if !nacos.Spec.PGInit.Enabled {
-            nacos.Spec.PGInit.Enabled = true
-        }
-        if nacos.Spec.PGInit.SchemaVersion == 0 {
-            nacos.Spec.PGInit.SchemaVersion = 1
-        }
-        if nacos.Spec.PGInit.Policy == "" {
-            nacos.Spec.PGInit.Policy = "IfNotPresent"
-        }
-    }
+	// 默认端口
+	if nacos.Spec.Postgres.Port == "" {
+		nacos.Spec.Postgres.Port = "5432"
+	}
+	// 默认凭据 key
+	if nacos.Spec.Postgres.CredentialsSecretRef.UsernameKey == "" {
+		nacos.Spec.Postgres.CredentialsSecretRef.UsernameKey = "username"
+	}
+	if nacos.Spec.Postgres.CredentialsSecretRef.PasswordKey == "" {
+		nacos.Spec.Postgres.CredentialsSecretRef.PasswordKey = "password"
+	}
+	// 默认初始化开关与参数（仅当配置了 Postgres 时）
+	if nacos.Spec.Postgres.Host != "" {
+		if nacos.Spec.PGInit.TimeoutSeconds == 0 {
+			nacos.Spec.PGInit.TimeoutSeconds = 20
+		}
+		// 若未显式关闭，默认启�?
+		if !nacos.Spec.PGInit.Enabled {
+			nacos.Spec.PGInit.Enabled = true
+		}
+		if nacos.Spec.PGInit.SchemaVersion == 0 {
+			nacos.Spec.PGInit.SchemaVersion = 1
+		}
+		if nacos.Spec.PGInit.Policy == "" {
+			nacos.Spec.PGInit.Policy = "IfNotPresent"
+		}
+	}
 }
 
 // setDefaultAdminSecret sets default keys for admin credentials secret
 func setDefaultAdminSecret(nacos *nacosgroupv1alpha1.Nacos) {
-    if nacos.Spec.AdminCredentialsSecretRef.UsernameKey == "" {
-        nacos.Spec.AdminCredentialsSecretRef.UsernameKey = "username"
-    }
-    if nacos.Spec.AdminCredentialsSecretRef.PasswordHashKey == "" {
-        nacos.Spec.AdminCredentialsSecretRef.PasswordHashKey = "passwordHash"
-    }
+	if nacos.Spec.AdminCredentialsSecretRef.UsernameKey == "" {
+		nacos.Spec.AdminCredentialsSecretRef.UsernameKey = "username"
+	}
+	if nacos.Spec.AdminCredentialsSecretRef.PasswordHashKey == "" {
+		nacos.Spec.AdminCredentialsSecretRef.PasswordHashKey = "passwordHash"
+	}
 }
 
 func setDefaultNacosType(nacos *nacosgroupv1alpha1.Nacos) {
@@ -531,12 +532,12 @@ func (e *KindClient) buildClientService(nacos *nacosgroupv1alpha1.Nacos) *v1.Ser
 			Selector: labels,
 		},
 	}
-    // client-service 默认使用 IPv4 单栈，兼容未开�?IPv6 的集�?
-    var ipf = make([]v1.IPFamily, 0)
-    ipf = append(ipf, v1.IPv4Protocol)
-    svc.Spec.IPFamilies = ipf
-    var ipPli = v1.IPFamilyPolicySingleStack
-    svc.Spec.IPFamilyPolicy = &ipPli
+	// client-service 默认使用 IPv4 单栈，兼容未开�?IPv6 的集�?
+	var ipf = make([]v1.IPFamily, 0)
+	ipf = append(ipf, v1.IPv4Protocol)
+	svc.Spec.IPFamilies = ipf
+	var ipPli = v1.IPFamilyPolicySingleStack
+	svc.Spec.IPFamilyPolicy = &ipPli
 	myErrors.EnsureNormal(controllerutil.SetControllerReference(nacos, svc, e.scheme))
 	return svc
 }
@@ -666,17 +667,6 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 						{
 							Name:  nacos.Name,
 							Image: nacos.Spec.Image,
-							Lifecycle: &v1.Lifecycle{
-								PreStop: &v1.Handler{
-									Exec: &v1.ExecAction{
-										Command: []string{
-											"/bin/sh",
-											"-c",
-											"rm -rf /home/nacos/data/protocol/raft",
-										},
-									},
-								},
-							},
 							Ports: []v1.ContainerPort{
 								{
 									Name:          "client",
@@ -709,7 +699,7 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 	// 设置存储（HostPath 优先，其次 EmptyDir，再次 PVC）
 	if nacos.Spec.Volume.HostPath != nil {
 		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
-			Name: "db",
+			Name:         "db",
 			VolumeSource: v1.VolumeSource{HostPath: nacos.Spec.Volume.HostPath},
 		})
 		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
@@ -718,7 +708,7 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 	}
 	if nacos.Spec.Volume.EmptyDir != nil && nacos.Spec.Volume.HostPath == nil {
 		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
-			Name: "db",
+			Name:         "db",
 			VolumeSource: v1.VolumeSource{EmptyDir: nacos.Spec.Volume.EmptyDir},
 		})
 		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
@@ -1065,8 +1055,8 @@ func (e *KindClient) buildStatefulsetCluster(nacos *nacosgroupv1alpha1.Nacos, ss
 		},
 	}
 	ss.Spec.Template.Spec.Containers[0].Env = append(ss.Spec.Template.Spec.Containers[0].Env, env...)
-	// 先检查域名解析再启动
-	ss.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", fmt.Sprintf("%s&&bin/docker-startup.sh", fmt.Sprintf(initScrit, serivceNoPort))}
+	// fix by yrc10943，去掉前置网络检查，避免灾难恢复场景单节点无法恢复整个集群无法恢复
+	ss.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "bin/docker-startup.sh"}
 	return ss
 }
 
@@ -1081,4 +1071,3 @@ func (e *KindClient) buildHeadlessServiceCluster(svc *v1.Service, nacos *nacosgr
 	svc.Spec.IPFamilyPolicy = &ipPli
 	return svc
 }
-

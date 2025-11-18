@@ -198,6 +198,22 @@ func TestClusterNacosCreation(t *testing.T) {
 	}
 	t.Logf("✓ StatefulSet created with %d replicas", *sts.Spec.Replicas)
 
+	// Verify no preStop lifecycle on containers to avoid deleting raft data
+	if sts.Spec.Template.Spec.Containers[0].Lifecycle != nil {
+		t.Errorf("Expected container has no lifecycle, but found one")
+	}
+	t.Logf("✓ StatefulSet created with no lifecycle")
+
+	// Verify container command does not include ping all cluster
+	if len(sts.Spec.Template.Spec.Containers[0].Command) != 3 ||
+		sts.Spec.Template.Spec.Containers[0].Command[0] != "/bin/bash" ||
+		sts.Spec.Template.Spec.Containers[0].Command[1] != "-c" ||
+		sts.Spec.Template.Spec.Containers[0].Command[2] != "bin/docker-startup.sh" {
+		t.Errorf("Expected container command to be default /bin/bash -c bin/docker-startup.sh,"+
+			"but got %v", sts.Spec.Template.Spec.Containers[0].Command)
+	}
+	t.Logf("✓ StatefulSet created with commond no ping all cluster")
+
 	// Verify Services created (cluster mode creates headless and client services)
 	svcList := &corev1.ServiceList{}
 	if err := fakeClient.List(ctx, svcList, client.InNamespace("default")); err != nil {

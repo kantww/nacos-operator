@@ -1283,6 +1283,9 @@ spec:
                 phase:
                   description: 运行状态，主要根据这个字段用来判断是否正常
                   type: string
+                healthy:
+                  description: Healthy indicates whether the cluster is running normally
+                  type: boolean
                 version:
                   type: string
                 configDigest:

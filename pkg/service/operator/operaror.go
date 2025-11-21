@@ -77,6 +77,7 @@ func (c *OperatorClient) PreCheck(nacos *nacosgroupv1alpha1.Nacos) {
 	case nacosgroupv1alpha1.PhaseNone:
 		// 初始化
 		nacos.Status.Phase = nacosgroupv1alpha1.PhaseCreating
+		nacos.Status.Healthy = false
 		panic(myErrors.New(myErrors.CODE_NORMAL, ""))
 	case nacosgroupv1alpha1.PhaseScale:
 	default:

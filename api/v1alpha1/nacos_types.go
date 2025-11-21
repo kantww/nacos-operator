@@ -172,6 +172,8 @@ type NacosStatus struct {
 	Event []Event `json:"event,omitempty" protobuf:"bytes,4,opt,name=event"`
 	// 运行状态，主要根据这个字段用来判断是否正常
 	Phase Phase `json:"phase,omitempty"`
+	// Healthy indicates whether the cluster is healthy (true only when Phase is Running)
+	Healthy bool `json:"healthy"`
 
     Version string `json:"version,omitempty"`
 
@@ -192,6 +194,7 @@ type NacosStatus struct {
 // +kubebuilder:printcolumn:name="type",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="dbType",type=string,JSONPath=`.spec.database.type`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
+// +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.healthy`
 // +kubebuilder:printcolumn:name="CreateTime",type=string,JSONPath=`.metadata.creationTimestamp`
 type Nacos struct {
 	metav1.TypeMeta   `json:",inline"`

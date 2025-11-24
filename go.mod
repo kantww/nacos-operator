@@ -1,6 +1,6 @@
 module nacos.io/nacos-operator
 
-go 1.24
+go 1.23
 
 require (
 	github.com/go-logr/logr v0.4.0

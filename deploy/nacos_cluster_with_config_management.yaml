@@ -100,6 +100,14 @@ data:
     # Metrics configuration
     management.metrics.export.elastic.enabled=false
     management.metrics.export.influx.enabled=false
+    
+    management.endpoints.web.exposure.include=prometheus
+    management.server.port=8849
+
+    management.server.base-path=/
+    management.endpoints.web.base-path=/
+    management.endpoints.web.path-mapping.prometheus=metrics
+
 
     # Naming configuration
     nacos.naming.distro.taskDispatchThreadCount=10

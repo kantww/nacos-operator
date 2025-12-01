@@ -1291,6 +1291,9 @@ spec:
                 configDigest:
                   description: Config digest tracks the hash of merged configuration for rolling updates
                   type: string
+                versionDigest:
+                  description: Short hash (10 hex chars) of the current spec for change detection
+                  type: string
               type: object
           type: object
       served: true

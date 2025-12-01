@@ -183,6 +183,8 @@ type NacosStatus struct {
     Admin AdminStatus `json:"admin,omitempty"`
     // Config digest tracks the hash of merged configuration for rolling updates
     ConfigDigest string `json:"configDigest,omitempty"`
+    // VersionDigest captures a short hash of the current spec to detect external updates
+    VersionDigest string `json:"versionDigest,omitempty"`
 }
 
 // +kubebuilder:object:root=true

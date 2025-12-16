@@ -2,6 +2,9 @@ package operator
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,13 +35,15 @@ func NewStatusClient(logger log.Logger, k8sService k8s.Services, client client.C
 func (c *StatusClient) UpdateStatusRunning(nacos *nacosgroupv1alpha1.Nacos) {
 	c.updateLastEvent(nacos, 200, "", true)
 	nacos.Status.Phase = nacosgroupv1alpha1.PhaseRunning
-	// TODO
+	c.syncHealthy(nacos)
+	c.syncVersionDigest(nacos)
 	myErrors.EnsureNormal(c.client.Status().Update(context.TODO(), nacos))
 }
 
 // 更新状态
 func (c *StatusClient) UpdateStatus(nacos *nacosgroupv1alpha1.Nacos) {
-	// TODO
+	c.syncHealthy(nacos)
+	c.syncVersionDigest(nacos)
 	myErrors.EnsureNormal(c.client.Status().Update(context.TODO(), nacos))
 }
 
@@ -46,6 +51,8 @@ func (c *StatusClient) UpdateExceptionStatus(nacos *nacosgroupv1alpha1.Nacos, er
 	c.updateLastEvent(nacos, err.Code, err.Msg, false)
 	// 设置为异常状态
 	nacos.Status.Phase = nacosgroupv1alpha1.PhaseFailed
+	c.syncHealthy(nacos)
+	c.syncVersionDigest(nacos)
 	e := c.client.Status().Update(context.TODO(), nacos)
 	if e != nil {
 		c.logger.V(-1).Info(e.Error())
@@ -94,4 +101,24 @@ func (c *StatusClient) updateLastEvent(nacos *nacosgroupv1alpha1.Nacos, code int
 		nacos.Status.Event = append(nacos.Status.Event, event)
 	}
 
+}
+
+func (c *StatusClient) syncHealthy(nacos *nacosgroupv1alpha1.Nacos) {
+	nacos.Status.Healthy = nacos.Status.Phase == nacosgroupv1alpha1.PhaseRunning
+}
+
+const versionDigestLength = 10
+
+func (c *StatusClient) syncVersionDigest(nacos *nacosgroupv1alpha1.Nacos) {
+	data, err := json.Marshal(nacos.Spec)
+	if err != nil {
+		c.logger.V(-1).Info("failed to marshal spec for versionDigest", "error", err.Error())
+		return
+	}
+	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
+	if len(digest) > versionDigestLength {
+		digest = digest[:versionDigestLength]
+	}
+	nacos.Status.VersionDigest = digest
 }

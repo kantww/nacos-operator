@@ -160,11 +160,15 @@ func checkSts(old *appsv1.StatefulSet, new *appsv1.StatefulSet) operator {
 	envA, _ := json.Marshal(old.Spec.Template.Spec.Containers[0].Env)
 	envB, _ := json.Marshal(new.Spec.Template.Spec.Containers[0].Env)
 
+	// Check template annotations (for config digest changes)
+	annotationsA, _ := json.Marshal(old.Spec.Template.Annotations)
+	annotationsB, _ := json.Marshal(new.Spec.Template.Annotations)
+
 	if checkVolumeClaimTemplates(old, new) {
 		return Delete
 	}
 
-	if !bytes.Equal(rsA, rsB) || *old.Spec.Replicas != *new.Spec.Replicas || !bytes.Equal(envA, envB) {
+	if !bytes.Equal(rsA, rsB) || *old.Spec.Replicas != *new.Spec.Replicas || !bytes.Equal(envA, envB) || !bytes.Equal(annotationsA, annotationsB) {
 		return Update
 	}
 

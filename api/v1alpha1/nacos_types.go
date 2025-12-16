@@ -51,10 +51,25 @@ type NacosSpec struct {
 	Volume       Storage  `json:"volume,omitempty"`
 	// 配置文件
 	Config string `json:"config,omitempty"`
+	// 配置管理：用户自定义配置 ConfigMap 引用
+	UserConfigRef *ConfigMapRef `json:"userConfigRef,omitempty"`
+	// 配置管理：内置配置 ConfigMap 引用
+	InternalConfigRef *ConfigMapRef `json:"internalConfigRef,omitempty"`
+	// 配置管理：最终合并后的 ConfigMap 名称（由 operator 创建和管理）
+	FinalConfigName string `json:"finalConfigName,omitempty"`
 	// 开启认证
 	Certification Certification `json:"certification,omitempty"`
 	// 通用k8s配置包装器
 	K8sWrapper K8sWrapper `json:"k8sWrapper,omitempty"`
+    // Operator 专用：Postgres 直连配置与初始化控制（不影响 Nacos 运行时配置）
+    Postgres NacosPostgresSpec `json:"postgres,omitempty"`
+    PGInit   PGInitSpec   `json:"pgInit,omitempty"`
+    // Admin credentials secret (username + bcrypt hash), used for direct-DB rotation
+    AdminCredentialsSecretRef AdminCredentialsSecretRef `json:"adminCredentialsSecretRef,omitempty"`
+    // Optional external checksum used to explicitly trigger rotation when changed
+    AdminSecretChecksum       string                    `json:"adminSecretChecksum,omitempty"`
+    // Identity header source from Secret (preferred)
+    IdentitySecretRef         *IdentitySecretRef        `json:"identitySecretRef,omitempty"`
 }
 
 type Certification struct {
@@ -62,6 +77,12 @@ type Certification struct {
 	Token              string `json:"token,omitempty"`
 	TokenExpireSeconds string `json:"token_expire_seconds,omitempty"`
 	CacheEnabled       bool   `json:"cache_enabled,omitempty"`
+}
+
+// ConfigMapRef references a ConfigMap for configuration management
+type ConfigMapRef struct {
+	Name string `json:"name,omitempty"`
+	Key  string `json:"key,omitempty"`
 }
 
 type K8sWrapper struct {
@@ -85,9 +106,11 @@ func (m *PodSpecWrapper) UnmarshalJSON(data []byte) error {
 }
 
 type Storage struct {
-	Enabled      bool            `json:"enabled,omitempty"`
-	Requests     v1.ResourceList `json:"requests,omitempty" protobuf:"bytes,2,rep,name=requests,casttype=ResourceList,castkey=ResourceName"`
-	StorageClass *string         `json:"storageClass,omitempty"`
+    VolumeClaimTemplate  *v1.PersistentVolumeClaim `json:"volumeClaimTemplate,omitempty"`
+    EmptyDir             *v1.EmptyDirVolumeSource  `json:"emptyDir,omitempty"`
+    HostPath             *v1.HostPathVolumeSource  `json:"hostPath,omitempty"`
+    KeepAfterDeletion    bool                      `json:"keepAfterDeletion,omitempty"`
+    PersistentVolumeSize string                    `json:"persistentVolumeSize,omitempty"`
 }
 
 type Database struct {
@@ -99,18 +122,69 @@ type Database struct {
 	MysqlPassword string `json:"mysqlPassword,omitempty"`
 }
 
+// Operator 直连 PG 的凭据引用
+type PGCredentialsSecretRef struct {
+    Name        string `json:"name,omitempty"`
+    UsernameKey string `json:"usernameKey,omitempty"`
+    PasswordKey string `json:"passwordKey,omitempty"`
+}
+
+// Operator 直连 PG 的配置（不影响 Nacos 自身的连接方式）
+type NacosPostgresSpec struct {
+    Host                 string                 `json:"host,omitempty"`
+    Port                 string                 `json:"port,omitempty"`
+    Database             string                 `json:"database,omitempty"`
+    CredentialsSecretRef PGCredentialsSecretRef `json:"credentialsSecretRef,omitempty"`
+}
+
+// 初始化控制（Operator 侧）
+type PGInitSpec struct {
+    Enabled        bool                     `json:"enabled,omitempty"`
+    TimeoutSeconds int32                    `json:"timeoutSeconds,omitempty"`
+    // Desired schema version; used with policy to decide re-init or migrations
+    SchemaVersion  int32                    `json:"schemaVersion,omitempty"`
+    // Init policy: IfNotPresent|Always|Never|BumpVersion (default IfNotPresent)
+    Policy         string                   `json:"policy,omitempty"`
+}
+
+// IdentitySecretRef references a Secret that holds Nacos server identity header
+// key and value. Keys default to identity_key / identity_value when omitted.
+type IdentitySecretRef struct {
+    Name     string `json:"name,omitempty"`
+    KeyKey   string `json:"keyKey,omitempty"`
+    ValueKey string `json:"valueKey,omitempty"`
+}
+
+// AdminCredentialsSecretRef references the Secret that holds admin username and password hash
+type AdminCredentialsSecretRef struct {
+    Name            string `json:"name,omitempty"`
+    UsernameKey     string `json:"usernameKey,omitempty"`
+    PasswordHashKey string `json:"passwordHashKey,omitempty"`
+}
+
 // NacosStatus defines the observed state of Nacos
 type NacosStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	// 记录实例状态
-	Conditions []Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,2,rep,name=conditions"`
+    Conditions []NacosCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,2,rep,name=conditions"`
 	// 记录事件
 	Event []Event `json:"event,omitempty" protobuf:"bytes,4,opt,name=event"`
 	// 运行状态，主要根据这个字段用来判断是否正常
 	Phase Phase `json:"phase,omitempty"`
+	// Healthy indicates whether the cluster is healthy (true only when Phase is Running)
+	Healthy bool `json:"healthy"`
 
-	Version string `json:"version,omitempty"`
+    Version string `json:"version,omitempty"`
+
+    // PG reflects Postgres initialization status (operator-managed)
+    PG PGStatus `json:"pg,omitempty"`
+    // Admin password rotation status
+    Admin AdminStatus `json:"admin,omitempty"`
+    // Config digest tracks the hash of merged configuration for rolling updates
+    ConfigDigest string `json:"configDigest,omitempty"`
+    // VersionDigest captures a short hash of the current spec to detect external updates
+    VersionDigest string `json:"versionDigest,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -122,6 +196,7 @@ type NacosStatus struct {
 // +kubebuilder:printcolumn:name="type",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="dbType",type=string,JSONPath=`.spec.database.type`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
+// +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.healthy`
 // +kubebuilder:printcolumn:name="CreateTime",type=string,JSONPath=`.metadata.creationTimestamp`
 type Nacos struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -141,11 +216,11 @@ type NacosList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&Nacos{}, &NacosList{})
+    SchemeBuilder.Register(&Nacos{}, &NacosList{})
 }
 
 // 状况
-type Condition struct {
+type NacosCondition struct {
 	// Type is the type of the condition.
 	// More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-conditions
 	Type string `json:"type" protobuf:"bytes,1,opt,name=type,casttype=PodConditionType"`
@@ -195,9 +270,27 @@ type Event struct {
 type Phase string
 
 const (
-	PhaseRunning  Phase = "Running"
-	PhaseNone     Phase = ""
-	PhaseCreating Phase = "Creating"
-	PhaseFailed   Phase = "Failed"
-	PhaseScale    Phase = "Scaling"
+    PhaseRunning  Phase = "Running"
+    PhaseNone     Phase = ""
+    PhaseCreating Phase = "Creating"
+    PhaseFailed   Phase = "Failed"
+    PhaseScale    Phase = "Scaling"
 )
+
+// PGStatus describes the observed state of Postgres initialization.
+type PGStatus struct {
+    Initialized                  bool   `json:"initialized,omitempty"`
+    InitVersion                  int32  `json:"initVersion,omitempty"`
+    LastInitTime                 metav1.Time `json:"lastInitTime,omitempty"`
+    LastResult                   string `json:"lastResult,omitempty"`
+    LastMessage                  string `json:"lastMessage,omitempty"`
+}
+
+// AdminStatus tracks admin password rotation
+type AdminStatus struct {
+    LastRotateTime            metav1.Time `json:"lastRotateTime,omitempty"`
+    LastResult                string      `json:"lastResult,omitempty"`
+    LastMessage               string      `json:"lastMessage,omitempty"`
+    LastSecretResourceVersion string      `json:"lastSecretResourceVersion,omitempty"`
+    LastSecretChecksum        string      `json:"lastSecretChecksum,omitempty"`
+}

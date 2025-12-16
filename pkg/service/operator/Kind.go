@@ -1,13 +1,16 @@
-package operator
+﻿package operator
 
 import (
+	"crypto/sha256"
 	"fmt"
-	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"nacos.io/nacos-operator/pkg/util/merge"
 	"os"
 	"path/filepath"
 	"strconv"
+
+	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
+	"nacos.io/nacos-operator/pkg/util/merge"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -39,7 +42,7 @@ for element in ${array[@]}
 do
   while true
   do
-    ping $element -c 1 > /dev/stdout
+    ping -c 1 $element > /dev/stdout
     if [[ $? -eq 0 ]]; then
       echo $element "all domain ready"
       break
@@ -85,7 +88,7 @@ func (e *KindClient) generateAnnoation() map[string]string {
 	return map[string]string{}
 }
 
-// 合并cr中的label 和 固定的label
+// 合并cr中的label �?固定的label
 func (e *KindClient) MergeLabels(allLabels ...map[string]string) map[string]string {
 	res := map[string]string{}
 	for _, labels := range allLabels {
@@ -116,6 +119,8 @@ func (e *KindClient) ValidationField(nacos *nacosgroupv1alpha1.Nacos) {
 		setDefaultNacosType,
 		setDefaultMysql,
 		setDefaultCertification,
+		setDefaultPostgres,
+		setDefaultAdminSecret,
 	}
 
 	for _, f := range setDefaultValue {
@@ -123,8 +128,48 @@ func (e *KindClient) ValidationField(nacos *nacosgroupv1alpha1.Nacos) {
 	}
 }
 
+func setDefaultPostgres(nacos *nacosgroupv1alpha1.Nacos) {
+	// 默认端口
+	if nacos.Spec.Postgres.Port == "" {
+		nacos.Spec.Postgres.Port = "5432"
+	}
+	// 默认凭据 key
+	if nacos.Spec.Postgres.CredentialsSecretRef.UsernameKey == "" {
+		nacos.Spec.Postgres.CredentialsSecretRef.UsernameKey = "username"
+	}
+	if nacos.Spec.Postgres.CredentialsSecretRef.PasswordKey == "" {
+		nacos.Spec.Postgres.CredentialsSecretRef.PasswordKey = "password"
+	}
+	// 默认初始化开关与参数（仅当配置了 Postgres 时）
+	if nacos.Spec.Postgres.Host != "" {
+		if nacos.Spec.PGInit.TimeoutSeconds == 0 {
+			nacos.Spec.PGInit.TimeoutSeconds = 20
+		}
+		// 若未显式关闭，默认启�?
+		if !nacos.Spec.PGInit.Enabled {
+			nacos.Spec.PGInit.Enabled = true
+		}
+		if nacos.Spec.PGInit.SchemaVersion == 0 {
+			nacos.Spec.PGInit.SchemaVersion = 1
+		}
+		if nacos.Spec.PGInit.Policy == "" {
+			nacos.Spec.PGInit.Policy = "IfNotPresent"
+		}
+	}
+}
+
+// setDefaultAdminSecret sets default keys for admin credentials secret
+func setDefaultAdminSecret(nacos *nacosgroupv1alpha1.Nacos) {
+	if nacos.Spec.AdminCredentialsSecretRef.UsernameKey == "" {
+		nacos.Spec.AdminCredentialsSecretRef.UsernameKey = "username"
+	}
+	if nacos.Spec.AdminCredentialsSecretRef.PasswordHashKey == "" {
+		nacos.Spec.AdminCredentialsSecretRef.PasswordHashKey = "passwordHash"
+	}
+}
+
 func setDefaultNacosType(nacos *nacosgroupv1alpha1.Nacos) {
-	// 默认设置单节点
+	// 默认设置单节�?
 	if nacos.Spec.Type == "" {
 		nacos.Spec.Type = "standalone"
 	}
@@ -143,11 +188,11 @@ func setDefaultCertification(nacos *nacosgroupv1alpha1.Nacos) {
 }
 
 func setDefaultMysql(nacos *nacosgroupv1alpha1.Nacos) {
-	// 默认设置内置数据库
+	// 默认设置内置数据�?
 	if nacos.Spec.Database.TypeDatabase == "" {
 		nacos.Spec.Database.TypeDatabase = "embedded"
 	}
-	// mysql设置默认值
+	// mysql设置默认�?
 	if nacos.Spec.Database.TypeDatabase == "mysql" {
 		if nacos.Spec.Database.MysqlHost == "" {
 			nacos.Spec.Database.MysqlHost = "127.0.0.1"
@@ -192,7 +237,7 @@ func (e *KindClient) EnsureServiceCluster(nacos *nacosgroupv1alpha1.Nacos) {
 
 func (e *KindClient) EnsureClientService(nacos *nacosgroupv1alpha1.Nacos) {
 	ss := e.buildClientService(nacos)
-	myErrors.EnsureNormal(e.k8sService.CreateIfNotExistsService(nacos.Namespace, ss))
+	myErrors.EnsureNormal(e.k8sService.CreateOrUpdateService(nacos.Namespace, ss))
 }
 
 func (e *KindClient) EnsureHeadlessServiceCluster(nacos *nacosgroupv1alpha1.Nacos) {
@@ -202,10 +247,36 @@ func (e *KindClient) EnsureHeadlessServiceCluster(nacos *nacosgroupv1alpha1.Naco
 }
 
 func (e *KindClient) EnsureConfigmap(nacos *nacosgroupv1alpha1.Nacos) {
+	// 新的配置管理方式：合并 user-config 和 internal-config
+	if nacos.Spec.UserConfigRef != nil || nacos.Spec.InternalConfigRef != nil {
+		cm := e.buildMergedConfigMap(nacos)
+		myErrors.EnsureNormal(e.k8sService.CreateOrUpdateConfigMap(nacos.Namespace, cm))
+
+		// 计算配置的 digest 并保存到 Nacos status 中
+		if content, ok := cm.Data["application.properties"]; ok {
+			digest := e.computeConfigDigest(content)
+			nacos.Status.ConfigDigest = digest
+			e.logger.Info("Computed config digest", "digest", digest)
+		}
+		return
+	}
+
+	// 旧的配置方式：直接使用 Config 字段
 	if nacos.Spec.Config != "" {
 		cm := e.buildConfigMap(nacos)
 		myErrors.EnsureNormal(e.k8sService.CreateIfNotExistsConfigMap(nacos.Namespace, cm))
 	}
+}
+
+// computeConfigDigest 计算配置内容的 SHA256 digest
+func (e *KindClient) computeConfigDigest(content string) string {
+	// 使用 crypto/sha256 计算配置内容的哈希值
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(content)))
+	// 取前16个字符作为简短的digest
+	if len(hash) > 16 {
+		return hash[:16]
+	}
+	return hash
 }
 
 func (e *KindClient) EnsureMysqlConfigMap(nacos *nacosgroupv1alpha1.Nacos) {
@@ -380,7 +451,7 @@ func (e *KindClient) buildJob(nacos *nacosgroupv1alpha1.Nacos) *batchv1.Job {
 }
 
 func readSql(sqlFileName string) string {
-	// abspath：项目的根路径
+	// abspath：项目的根路�?
 	abspath, _ := filepath.Abs("")
 	bytes, err := os.ReadFile(abspath + "/config/sql/" + sqlFileName)
 	if err != nil {
@@ -444,6 +515,7 @@ func (e *KindClient) buildClientService(nacos *nacosgroupv1alpha1.Nacos) *v1.Ser
 			Annotations: annotations,
 		},
 		Spec: v1.ServiceSpec{
+			Type:                     v1.ServiceTypeNodePort,
 			PublishNotReadyAddresses: true,
 			Ports: []v1.ServicePort{
 				{
@@ -460,12 +532,11 @@ func (e *KindClient) buildClientService(nacos *nacosgroupv1alpha1.Nacos) *v1.Ser
 			Selector: labels,
 		},
 	}
-	//client-service提供双栈
+	// client-service 默认使用 IPv4 单栈，兼容未开�?IPv6 的集�?
 	var ipf = make([]v1.IPFamily, 0)
 	ipf = append(ipf, v1.IPv4Protocol)
-	ipf = append(ipf, v1.IPv6Protocol)
 	svc.Spec.IPFamilies = ipf
-	var ipPli = v1.IPFamilyPolicyPreferDualStack
+	var ipPli = v1.IPFamilyPolicySingleStack
 	svc.Spec.IPFamilyPolicy = &ipPli
 	myErrors.EnsureNormal(controllerutil.SetControllerReference(nacos, svc, e.scheme))
 	return svc
@@ -477,7 +548,7 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 	// 合并cr中原有的label
 	labels = e.MergeLabels(nacos.Labels, labels)
 
-	// 设置默认的环境变量
+	// 设置默认的环境变�?
 	env := append(nacos.Spec.Env, v1.EnvVar{
 		Name:  "PREFER_HOST_MODE",
 		Value: "hostname",
@@ -519,7 +590,7 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 		})
 	}
 
-	// 数据库设置
+	// 数据库设�?
 	if nacos.Spec.Database.TypeDatabase == "embedded" {
 		env = append(env, v1.EnvVar{
 			Name:  "EMBEDDED_STORAGE",
@@ -584,7 +655,8 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 			Selector:            &metav1.LabelSelector{MatchLabels: labels},
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels:      labels,
+					Annotations: make(map[string]string),
 				},
 				Spec: v1.PodSpec{
 					Volumes:      []v1.Volume{},
@@ -595,17 +667,6 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 						{
 							Name:  nacos.Name,
 							Image: nacos.Spec.Image,
-							Lifecycle: &v1.Lifecycle{
-								PreStop: &v1.Handler{
-									Exec: &v1.ExecAction{
-										Command: []string{
-											"/bin/sh",
-											"-c",
-											"rm -rf /home/nacos/data/protocol/raft",
-										},
-									},
-								},
-							},
 							Ports: []v1.ContainerPort{
 								{
 									Name:          "client",
@@ -635,28 +696,43 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 		},
 	}
 
-	// 设置存储
-	if nacos.Spec.Volume.Enabled {
-		ss.Spec.VolumeClaimTemplates = append(ss.Spec.VolumeClaimTemplates, v1.PersistentVolumeClaim{
-			Spec: v1.PersistentVolumeClaimSpec{
-				//VolumeName:       "db",
-				StorageClassName: nacos.Spec.Volume.StorageClass,
-				AccessModes:      []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-				Resources: v1.ResourceRequirements{
-					Requests: nacos.Spec.Volume.Requests,
-				},
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "db",
-				Labels: labels,
-			},
+	// 设置存储（HostPath 优先，其次 EmptyDir，再次 PVC）
+	if nacos.Spec.Volume.HostPath != nil {
+		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
+			Name:         "db",
+			VolumeSource: v1.VolumeSource{HostPath: nacos.Spec.Volume.HostPath},
 		})
-
-		localVolum := v1.VolumeMount{
-			Name:      "db",
-			MountPath: "/home/nacos/data",
+		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			Name: "db", MountPath: "/home/nacos/data",
+		})
+	}
+	if nacos.Spec.Volume.EmptyDir != nil && nacos.Spec.Volume.HostPath == nil {
+		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
+			Name:         "db",
+			VolumeSource: v1.VolumeSource{EmptyDir: nacos.Spec.Volume.EmptyDir},
+		})
+		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			Name: "db", MountPath: "/home/nacos/data",
+		})
+	}
+	if nacos.Spec.Volume.VolumeClaimTemplate != nil && nacos.Spec.Volume.HostPath == nil && nacos.Spec.Volume.EmptyDir == nil {
+		pvc := *nacos.Spec.Volume.VolumeClaimTemplate
+		if pvc.Name == "" {
+			pvc.Name = "db"
 		}
-		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, localVolum)
+		if len(pvc.Spec.AccessModes) == 0 {
+			pvc.Spec.AccessModes = []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}
+		}
+		if nacos.Spec.Volume.PersistentVolumeSize != "" {
+			if pvc.Spec.Resources.Requests == nil {
+				pvc.Spec.Resources.Requests = v1.ResourceList{}
+			}
+			pvc.Spec.Resources.Requests[v1.ResourceStorage] = resource.MustParse(nacos.Spec.Volume.PersistentVolumeSize)
+		}
+		ss.Spec.VolumeClaimTemplates = append(ss.Spec.VolumeClaimTemplates, pvc)
+		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			Name: pvc.Name, MountPath: "/home/nacos/data",
+		})
 	}
 
 	//probe := &v1.Probe{
@@ -682,7 +758,34 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 	//	ss.Spec.Template.Spec.Containers[0].ReadinessProbe = probe
 	//}
 
-	if nacos.Spec.Config != "" {
+	// 新的配置管理方式：挂载 final-config
+	if nacos.Spec.UserConfigRef != nil || nacos.Spec.InternalConfigRef != nil {
+		finalConfigName := nacos.Spec.FinalConfigName
+		if finalConfigName == "" {
+			finalConfigName = fmt.Sprintf("%s-final-config", nacos.Name)
+		}
+
+		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
+			Name: "config",
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{Name: finalConfigName},
+					Items: []v1.KeyToPath{
+						{
+							Key:  "application.properties",
+							Path: "application.properties",
+						},
+					},
+				},
+			},
+		})
+		ss.Spec.Template.Spec.Containers[0].VolumeMounts = append(ss.Spec.Template.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			Name:      "config",
+			MountPath: "/home/nacos/conf/application.properties",
+			SubPath:   "application.properties",
+		})
+	} else if nacos.Spec.Config != "" {
+		// 旧的配置方式：挂载 custom.properties
 		ss.Spec.Template.Spec.Volumes = append(ss.Spec.Template.Spec.Volumes, v1.Volume{
 			Name: "config",
 			VolumeSource: v1.VolumeSource{
@@ -703,6 +806,16 @@ func (e *KindClient) buildStatefulset(nacos *nacosgroupv1alpha1.Nacos) *appv1.St
 			SubPath:   "custom.properties",
 		})
 	}
+
+	// 如果使用配置管理功能，将 config digest 添加到 StatefulSet template annotations
+	// 这样当配置变化时，StatefulSet 会触发滚动更新
+	if nacos.Spec.UserConfigRef != nil || nacos.Spec.InternalConfigRef != nil {
+		if nacos.Status.ConfigDigest != "" {
+			ss.Spec.Template.Annotations["nacos.io/config-digest"] = nacos.Status.ConfigDigest
+			e.logger.Info("Added config digest to StatefulSet template", "digest", nacos.Status.ConfigDigest)
+		}
+	}
+
 	myErrors.EnsureNormal(controllerutil.SetControllerReference(nacos, ss, e.scheme))
 
 	if nacos.Spec.Database.TypeDatabase == "mysql" && nacos.Spec.MysqlInitImage != "" {
@@ -757,6 +870,91 @@ func (e *KindClient) buildConfigMap(nacos *nacosgroupv1alpha1.Nacos) *v1.ConfigM
 	cm := v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        e.generateName(nacos),
+			Namespace:   nacos.Namespace,
+			Labels:      labels,
+			Annotations: nacos.Annotations,
+		},
+		Data: data,
+	}
+	myErrors.EnsureNormal(controllerutil.SetControllerReference(nacos, &cm, e.scheme))
+	return &cm
+}
+
+// buildMergedConfigMap 合并 user-config 和 internal-config 创建 final-config
+func (e *KindClient) buildMergedConfigMap(nacos *nacosgroupv1alpha1.Nacos) *v1.ConfigMap {
+	labels := e.generateLabels(nacos.Name, NACOS)
+	labels = e.MergeLabels(nacos.Labels, labels)
+
+	// 读取 internal-config 内容
+	internalContent := ""
+	if nacos.Spec.InternalConfigRef != nil && nacos.Spec.InternalConfigRef.Name != "" {
+		internalCM, err := e.k8sService.GetConfigMap(nacos.Namespace, nacos.Spec.InternalConfigRef.Name)
+		if err != nil {
+			e.logger.Error(err, "Failed to get internal-config ConfigMap", "name", nacos.Spec.InternalConfigRef.Name)
+			panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "Failed to get internal-config ConfigMap %s: %v", nacos.Spec.InternalConfigRef.Name, err))
+		}
+
+		key := nacos.Spec.InternalConfigRef.Key
+		if key == "" {
+			key = "internal.properties"
+		}
+
+		if content, ok := internalCM.Data[key]; ok {
+			internalContent = content
+		} else {
+			e.logger.Error(nil, "Internal-config key not found", "key", key)
+			panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "Internal-config key not found: %s", key))
+		}
+	}
+
+	// 读取 user-config 内容
+	userContent := ""
+	if nacos.Spec.UserConfigRef != nil && nacos.Spec.UserConfigRef.Name != "" {
+		userCM, err := e.k8sService.GetConfigMap(nacos.Namespace, nacos.Spec.UserConfigRef.Name)
+		if err != nil {
+			e.logger.Error(err, "Failed to get user-config ConfigMap", "name", nacos.Spec.UserConfigRef.Name)
+			panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "Failed to get user-config ConfigMap %s: %v", nacos.Spec.UserConfigRef.Name, err))
+		}
+
+		key := nacos.Spec.UserConfigRef.Key
+		if key == "" {
+			key = "user.properties"
+		}
+
+		if content, ok := userCM.Data[key]; ok {
+			userContent = content
+		} else {
+			e.logger.Error(nil, "User-config key not found", "key", key)
+			panic(myErrors.New(myErrors.CODE_PARAMETER_ERROR, "User-config key not found: %s", key))
+		}
+	}
+
+	// 合并配置内容：internal-config 在前，user-config 在后
+	// 这样 user-config 中的参数可以覆盖 internal-config 中的同名参数
+	mergedContent := ""
+	if internalContent != "" {
+		mergedContent += "# ===== Internal Configuration =====\n"
+		mergedContent += internalContent
+		mergedContent += "\n\n"
+	}
+	if userContent != "" {
+		mergedContent += "# ===== User Configuration =====\n"
+		mergedContent += userContent
+		mergedContent += "\n"
+	}
+
+	// 确定 final-config 的名称
+	finalConfigName := nacos.Spec.FinalConfigName
+	if finalConfigName == "" {
+		finalConfigName = fmt.Sprintf("%s-final-config", nacos.Name)
+	}
+
+	data := make(map[string]string)
+	data["application.properties"] = mergedContent
+
+	cm := v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        finalConfigName,
 			Namespace:   nacos.Namespace,
 			Labels:      labels,
 			Annotations: nacos.Annotations,
@@ -857,8 +1055,8 @@ func (e *KindClient) buildStatefulsetCluster(nacos *nacosgroupv1alpha1.Nacos, ss
 		},
 	}
 	ss.Spec.Template.Spec.Containers[0].Env = append(ss.Spec.Template.Spec.Containers[0].Env, env...)
-	// 先检查域名解析再启动
-	ss.Spec.Template.Spec.Containers[0].Command = []string{"sh", "-c", fmt.Sprintf("%s&&bin/docker-startup.sh", fmt.Sprintf(initScrit, serivceNoPort))}
+	// fix by yrc10943，去掉前置网络检查，避免灾难恢复场景单节点无法恢复整个集群无法恢复
+	ss.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "bin/docker-startup.sh"}
 	return ss
 }
 

@@ -19,6 +19,9 @@ serviceAccount:
   annotations: {}
   name: ""
 
+rbac:
+  namespaced: true
+
 podAnnotations: {}
 
 podSecurityContext:

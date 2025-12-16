@@ -18,24 +18,26 @@ type IOperatorClient interface {
 }
 
 type OperatorClient struct {
-	KindClient   *KindClient
-	CheckClient  *CheckClient
-	HealClient   *HealClient
-	StatusClient *StatusClient
+    KindClient   *KindClient
+    CheckClient  *CheckClient
+    HealClient   *HealClient
+    StatusClient *StatusClient
+    PGClient     *PGClient
 }
 
-func NewOperatorClient(logger log.Logger, clientset *kubernetes.Clientset, s *runtime.Scheme, client client.Client) *OperatorClient {
+func NewOperatorClient(logger log.Logger, clientset kubernetes.Interface, s *runtime.Scheme, client client.Client) *OperatorClient {
 	service := k8s.NewK8sService(clientset, logger)
-	return &OperatorClient{
+    return &OperatorClient{
 		// 资源客户端
 		KindClient: NewKindClient(logger, service, s),
-		// 检测客户端
-		CheckClient: NewCheckClient(logger, service),
+        // 检测客户端
+        CheckClient: NewCheckClient(logger, service, client),
 		// 状态客户端
 		StatusClient: NewStatusClient(logger, service, client),
 		// 维护客户端
-		HealClient: NewHealClient(logger, service),
-	}
+        HealClient: NewHealClient(logger, service),
+        PGClient:   NewPGClient(logger, client),
+    }
 }
 
 func (c *OperatorClient) MakeEnsure(nacos *nacosgroupv1alpha1.Nacos) {
@@ -47,6 +49,8 @@ func (c *OperatorClient) MakeEnsure(nacos *nacosgroupv1alpha1.Nacos) {
 		c.KindClient.EnsureConfigmap(nacos)
 		c.KindClient.EnsureStatefulset(nacos)
 		c.KindClient.EnsureService(nacos)
+		// also expose client ports via NodePort service in standalone mode
+		c.KindClient.EnsureClientService(nacos)
 		if nacos.Spec.Database.TypeDatabase == "mysql" && nacos.Spec.MysqlInitImage != "" {
 			c.KindClient.EnsureMysqlConfigMap(nacos)
 			c.KindClient.EnsureJob(nacos)
@@ -73,11 +77,25 @@ func (c *OperatorClient) PreCheck(nacos *nacosgroupv1alpha1.Nacos) {
 	case nacosgroupv1alpha1.PhaseNone:
 		// 初始化
 		nacos.Status.Phase = nacosgroupv1alpha1.PhaseCreating
+		nacos.Status.Healthy = false
 		panic(myErrors.New(myErrors.CODE_NORMAL, ""))
 	case nacosgroupv1alpha1.PhaseScale:
 	default:
 		// TODO
 	}
+}
+
+// PGEnsure: 在确保 K8s 资源前进行 PG 连通性校验与初始化
+func (c *OperatorClient) PGEnsure(nacos *nacosgroupv1alpha1.Nacos) {
+    // 未配置 Postgres 则跳过
+    if nacos.Spec.Postgres.Host == "" {
+        return
+    }
+    // 若显式关闭初始化，直接跳过
+    if !nacos.Spec.PGInit.Enabled {
+        return
+    }
+    c.PGClient.PingAndInit(nacos)
 }
 
 func (c *OperatorClient) CheckAndMakeHeal(nacos *nacosgroupv1alpha1.Nacos) {
@@ -88,5 +106,19 @@ func (c *OperatorClient) CheckAndMakeHeal(nacos *nacosgroupv1alpha1.Nacos) {
 }
 
 func (c *OperatorClient) UpdateStatus(nacos *nacosgroupv1alpha1.Nacos) {
-	c.StatusClient.UpdateStatusRunning(nacos)
+    c.StatusClient.UpdateStatusRunning(nacos)
+}
+
+// RotateAdmin: rotate admin password via direct DB if needed
+func (c *OperatorClient) RotateAdmin(nacos *nacosgroupv1alpha1.Nacos) {
+    if c.PGClient == nil {
+        return
+    }
+    if nacos.Spec.Postgres.Host == "" {
+        return
+    }
+    if nacos.Spec.AdminCredentialsSecretRef.Name == "" {
+        return
+    }
+    c.PGClient.RotateAdminPassword(nacos)
 }

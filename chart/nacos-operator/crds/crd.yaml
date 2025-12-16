@@ -648,6 +648,25 @@ spec:
                 config:
                   description: 配置文件
                   type: string
+                finalConfigName:
+                  description: 配置管理：最终合并后的 ConfigMap 名称（由 operator 创建和管理）
+                  type: string
+                internalConfigRef:
+                  description: 配置管理：内置配置 ConfigMap 引用
+                  properties:
+                    key:
+                      type: string
+                    name:
+                      type: string
+                  type: object
+                userConfigRef:
+                  description: 配置管理：用户自定义配置 ConfigMap 引用
+                  properties:
+                    key:
+                      type: string
+                    name:
+                      type: string
+                  type: object
                 database:
                   properties:
                     mysqlDb:
@@ -663,6 +682,57 @@ spec:
                     type:
                       type: string
                   type: object
+                postgres:
+                  properties:
+                    host:
+                      type: string
+                    port:
+                      type: string
+                    database:
+                      type: string
+                    credentialsSecretRef:
+                      properties:
+                        name:
+                          type: string
+                        usernameKey:
+                          type: string
+                        passwordKey:
+                          type: string
+                      type: object
+                  type: object
+                pgInit:
+                  properties:
+                    enabled:
+                      type: boolean
+                    timeoutSeconds:
+                      format: int32
+                      type: integer
+                    schemaVersion:
+                      format: int32
+                      type: integer
+                    policy:
+                      type: string
+                  type: object
+                identitySecretRef:
+                  properties:
+                    name:
+                      type: string
+                    keyKey:
+                      type: string
+                    valueKey:
+                      type: string
+                  type: object
+                adminCredentialsSecretRef:
+                  properties:
+                    name:
+                      type: string
+                    usernameKey:
+                      type: string
+                    passwordHashKey:
+                      type: string
+                  type: object
+                adminSecretChecksum:
+                  type: string
                 env:
                   items:
                     description: EnvVar represents an environment variable present in
@@ -1092,25 +1162,59 @@ spec:
                   type: string
                 volume:
                   properties:
-                    enabled:
-                      type: boolean
-                    requests:
-                      additionalProperties:
-                        anyOf:
-                          - type: integer
-                          - type: string
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      description: ResourceList is a set of (resource name, quantity)
-                        pairs.
+                    volumeClaimTemplate:
                       type: object
-                    storageClass:
+                      x-kubernetes-preserve-unknown-fields: true
+                    emptyDir:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    hostPath:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        type:
+                          type: string
+                    keepAfterDeletion:
+                      type: boolean
+                    persistentVolumeSize:
                       type: string
                   type: object
               type: object
             status:
               description: NacosStatus defines the observed state of Nacos
               properties:
+                pg:
+                  description: Postgres initialization status (operator-managed)
+                  properties:
+                    initialized:
+                      type: boolean
+                    initVersion:
+                      format: int32
+                      type: integer
+                    lastInitTime:
+                      format: date-time
+                      type: string
+                    lastResult:
+                      type: string
+                    lastMessage:
+                      type: string
+                  type: object
+                admin:
+                  description: Admin password rotation status
+                  properties:
+                    lastRotateTime:
+                      format: date-time
+                      type: string
+                    lastResult:
+                      type: string
+                    lastMessage:
+                      type: string
+                    lastSecretResourceVersion:
+                      type: string
+                    lastSecretChecksum:
+                      type: string
+                  type: object
                 conditions:
                   description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "make" to regenerate code after modifying
@@ -1179,7 +1283,16 @@ spec:
                 phase:
                   description: 运行状态，主要根据这个字段用来判断是否正常
                   type: string
+                healthy:
+                  description: Healthy indicates whether the cluster is running normally
+                  type: boolean
                 version:
+                  type: string
+                configDigest:
+                  description: Config digest tracks the hash of merged configuration for rolling updates
+                  type: string
+                versionDigest:
+                  description: Short hash (10 hex chars) of the current spec for change detection
                   type: string
               type: object
           type: object

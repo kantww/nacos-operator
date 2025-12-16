@@ -17,8 +17,8 @@ limitations under the License.
 package main
 
 import (
-	"flag"
-	"os"
+    "flag"
+    "os"
 
 	"nacos.io/nacos-operator/pkg/service/operator"
 
@@ -56,23 +56,32 @@ func main() {
 	go func() {
 		http.ListenAndServe("0.0.0.0:8090", nil)
 	}()
-	var metricsAddr string
-	var enableLeaderElection bool
-	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
-	flag.Parse()
+    var metricsAddr string
+    var enableLeaderElection bool
+    flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
+    flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
+            "Enable leader election for controller manager. "+
+                "Enabling this will ensure there is only one active controller manager.")
+    flag.Parse()
 
 	//ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	ctrl.SetLogger(klogr.New())
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:             scheme,
-		MetricsBindAddress: metricsAddr,
-		Port:               9443,
-		LeaderElection:     enableLeaderElection,
-		LeaderElectionID:   "219866ca.nacos.io",
-	})
+    // Read watch/leader election namespaces from env (namespaced RBAC mode)
+    watchNs := os.Getenv("WATCH_NAMESPACE")
+    leaderNs := os.Getenv("LEADER_ELECTION_NAMESPACE")
+
+    opts := ctrl.Options{
+        Scheme:                 scheme,
+        MetricsBindAddress:     metricsAddr,
+        Port:                   9443,
+        LeaderElection:         enableLeaderElection,
+        LeaderElectionID:       "219866ca.nacos.io",
+        LeaderElectionNamespace: leaderNs,
+    }
+    if watchNs != "" {
+        opts.Namespace = watchNs
+    }
+    mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), opts)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)

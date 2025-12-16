@@ -41,29 +41,40 @@ func main() {
 	}
 	leader := ""
 	client := nacosClient.NacosClient{}
-	for _, pod := range podList.Items {
-		svc, err := client.GetClusterNodes(pod.Status.PodIP)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		if len(podList.Items) != len(svc.Servers) {
-			fmt.Println(pod.Name)
-			str, _ := json.Marshal(svc)
-			fmt.Printf("%s\n", str)
-			fmt.Println("servers 数量 不匹配")
-			return
-		}
-		if leader == "" {
-			leader = svc.Servers[0].ExtendInfo.RaftMetaData.MetaDataMap.NamingPersistentService.Leader
-		} else {
-			if leader != svc.Servers[0].ExtendInfo.RaftMetaData.MetaDataMap.NamingPersistentService.Leader {
-				fmt.Println("leader 不匹配")
-				return
-			}
-		}
+    for _, pod := range podList.Items {
+        svc, err := client.GetClusterNodes(pod.Status.PodIP)
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
+        if len(podList.Items) != len(svc.Data) {
+            fmt.Println(pod.Name)
+            str, _ := json.Marshal(svc)
+            fmt.Printf("%s\n", str)
+            fmt.Println("servers 数量 不匹配")
+            return
+        }
+        // Prefer v2 leader path, fallback to other groups
+        var gotLeader string
+        if len(svc.Data) > 0 {
+            gotLeader = svc.Data[0].ExtendInfo.RaftMetaData.MetaDataMap.NamingPersistentServiceV2.Leader
+            if gotLeader == "" {
+                gotLeader = svc.Data[0].ExtendInfo.RaftMetaData.MetaDataMap.NamingServiceMetadata.Leader
+            }
+            if gotLeader == "" {
+                gotLeader = svc.Data[0].ExtendInfo.RaftMetaData.MetaDataMap.NamingInstanceMetadata.Leader
+            }
+        }
+        if leader == "" {
+            leader = gotLeader
+        } else {
+            if leader != gotLeader {
+                fmt.Println("leader 不匹配")
+                return
+            }
+        }
 
-	}
+    }
 	fmt.Printf("leader is %s\n", leader)
 	fmt.Println("success")
 }
